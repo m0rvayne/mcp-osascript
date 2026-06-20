@@ -46,6 +46,19 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 }
 ```
 
+### Via npx (no clone needed)
+
+```json
+{
+  "mcpServers": {
+    "osascript": {
+      "command": "npx",
+      "args": ["-y", "mcp-osascript"]
+    }
+  }
+}
+```
+
 ### Claude Code
 
 ```bash

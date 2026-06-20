@@ -143,7 +143,7 @@ const TOOLS = [
   },
   {
     name: "get_frontmost_app",
-    description: "Get the name and bundle ID of the frontmost (active) application.",
+    description: "Get the name and bundle ID of the frontmost (active) application. May require Automation permission for System Events in System Settings > Privacy & Security > Automation.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -265,6 +265,9 @@ HANDLERS["get_clipboard"] = async () => {
 HANDLERS["set_clipboard"] = async (args) => {
   if (args.content == null || typeof args.content !== "string") {
     return errorResult("Parameter 'content' must be a string.");
+  }
+  if (args.content.length > MAX_SCRIPT_LENGTH) {
+    return errorResult(`Content too long (${args.content.length} chars). Max: ${MAX_SCRIPT_LENGTH}.`);
   }
   const r = await runAS(`set the clipboard to "${escapeAS(args.content)}"`);
   if (!r.ok) return errorResult(`Failed to set clipboard: ${r.error.friendlyMessage}`);
@@ -585,12 +588,17 @@ end tell`);
   }
 
   if (action === "fullscreen") {
-    const r = await runAS(`tell application "System Events" to tell process "${escApp}"\n  set value of attribute "AXFullScreen" of window ${winIndex} to true\nend tell`);
+    const r = await runAS(`tell application "System Events" to tell process "${escApp}"
+  set currentFS to value of attribute "AXFullScreen" of window ${winIndex}
+  set value of attribute "AXFullScreen" of window ${winIndex} to (not currentFS)
+  return (not currentFS) as text
+end tell`);
     if (!r.ok) {
       if (r.error.category === "permission_accessibility") return errorResult(ACCESSIBILITY_MSG);
       return errorResult(r.error.friendlyMessage);
     }
-    return textResult("Toggled fullscreen");
+    const newState = r.stdout.trim().toLowerCase() === "true" ? "on" : "off";
+    return textResult(`Fullscreen toggled ${newState}`);
   }
 
   if (action === "close") {
@@ -619,21 +627,41 @@ HANDLERS["app_menu"] = async (args) => {
   if (args.action === "list") {
     let script;
     if (menuPath.length === 0) {
-      script = `tell application "System Events" to tell process "${escApp}"\n  get name of every menu bar item of menu bar 1\nend tell`;
+      script = `tell application "System Events" to tell process "${escApp}"
+  set rawList to name of every menu bar item of menu bar 1
+  set output to ""
+  repeat with i from 1 to count of rawList
+    if item i of rawList is not missing value then
+      if output is not "" then set output to output & linefeed
+      set output to output & (item i of rawList)
+    end if
+  end repeat
+  return output
+end tell`;
     } else {
       const escPath = menuPath.map(escapeAS);
       let menuRef = `menu "${escPath[0]}" of menu bar item "${escPath[0]}" of menu bar 1`;
       for (let i = 1; i < escPath.length; i++) {
         menuRef = `menu "${escPath[i]}" of menu item "${escPath[i]}" of ${menuRef}`;
       }
-      script = `tell application "System Events" to tell process "${escApp}"\n  get name of every menu item of ${menuRef}\nend tell`;
+      script = `tell application "System Events" to tell process "${escApp}"
+  set rawList to name of every menu item of ${menuRef}
+  set output to ""
+  repeat with i from 1 to count of rawList
+    if item i of rawList is not missing value then
+      if output is not "" then set output to output & linefeed
+      set output to output & (item i of rawList)
+    end if
+  end repeat
+  return output
+end tell`;
     }
     const r = await runAS(script);
     if (!r.ok) {
       if (r.error.category === "permission_accessibility") return errorResult(ACCESSIBILITY_MSG);
       return errorResult(r.error.friendlyMessage);
     }
-    const items = r.stdout.split(", ").filter((i) => i !== "missing value" && i.trim() !== "");
+    const items = r.stdout.split("\n").filter((s) => s !== "");
     return textResult(JSON.stringify(items, null, 2));
   }
 
@@ -659,9 +687,19 @@ HANDLERS["app_menu"] = async (args) => {
       for (let i = 1; i < escParent.length; i++) {
         listRef = `menu "${escParent[i]}" of menu item "${escParent[i]}" of ${listRef}`;
       }
-      const listR = await runAS(`tell application "System Events" to tell process "${escApp}"\n  get name of every menu item of ${listRef}\nend tell`);
+      const listR = await runAS(`tell application "System Events" to tell process "${escApp}"
+  set rawList to name of every menu item of ${listRef}
+  set output to ""
+  repeat with i from 1 to count of rawList
+    if item i of rawList is not missing value then
+      if output is not "" then set output to output & linefeed
+      set output to output & (item i of rawList)
+    end if
+  end repeat
+  return output
+end tell`);
       if (listR.ok) {
-        const available = listR.stdout.split(", ").filter((i) => i !== "missing value" && i.trim() !== "");
+        const available = listR.stdout.split("\n").filter((s) => s !== "");
         return errorResult(`Menu item '${menuPath[menuPath.length - 1]}' not found in '${parentPath.join(" > ")}'. Available: ${JSON.stringify(available)}`);
       }
       return errorResult(r.error.friendlyMessage);

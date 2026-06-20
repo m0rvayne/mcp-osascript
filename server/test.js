@@ -186,6 +186,138 @@ async function runTests() {
   const r16 = await send("tools/call", { name: "constructor", arguments: {} });
   assert("prototype pollution blocked", r16.result.isError === true, r16.result);
 
+  // =========================================================================
+  // NEW TESTS (19–41)
+  // =========================================================================
+
+  // ── type_text ──────────────────────────────────────────────────────────────
+
+  // 19. empty text rejected
+  console.log("\n[type_text]");
+  const t19 = await send("tools/call", { name: "type_text", arguments: { text: "" } });
+  assert("empty text rejected", t19.result.isError === true, t19.result);
+
+  // 20. over-500-char text rejected
+  const t20 = await send("tools/call", { name: "type_text", arguments: { text: "a".repeat(501) } });
+  assert("over-500-char text rejected", t20.result.isError === true, t20.result);
+
+  // 21. valid text (accept success or accessibility error)
+  const t21 = await send("tools/call", { name: "type_text", arguments: { text: "hello" } });
+  const t21ok = !t21.result.isError || t21.result.content[0].text.includes("Accessibility");
+  assert("valid text (success or accessibility error)", t21ok, t21.result);
+
+  // ── press_key ──────────────────────────────────────────────────────────────
+
+  // 22. valid named key "escape" (accept success or accessibility error)
+  console.log("\n[press_key — extended]");
+  const t22 = await send("tools/call", { name: "press_key", arguments: { key: "escape" } });
+  const t22ok = !t22.result.isError || t22.result.content[0].text.includes("Accessibility");
+  assert("named key escape (success or accessibility error)", t22ok, t22.result);
+
+  // 23. single char "a" with modifiers ["command"] (accept success or accessibility error)
+  const t23 = await send("tools/call", { name: "press_key", arguments: { key: "a", modifiers: ["command"] } });
+  const t23ok = !t23.result.isError || t23.result.content[0].text.includes("Accessibility");
+  assert("char 'a' + command (success or accessibility error)", t23ok, t23.result);
+
+  // 24. invalid modifier rejected
+  const t24 = await send("tools/call", { name: "press_key", arguments: { key: "a", modifiers: ["super"] } });
+  assert("invalid modifier rejected", t24.result.isError === true, t24.result);
+
+  // ── get_browser_tabs ───────────────────────────────────────────────────────
+
+  // 25. invalid browser name rejected
+  console.log("\n[get_browser_tabs]");
+  const t25 = await send("tools/call", { name: "get_browser_tabs", arguments: { browser: "firefox" } });
+  assert("invalid browser name rejected", t25.result.isError === true, t25.result);
+
+  // 26. browser="safari" (accept success, not-running, or automation error)
+  const t26 = await send("tools/call", { name: "get_browser_tabs", arguments: { browser: "safari" } });
+  const t26ok = !t26.result.isError
+    || t26.result.content[0].text.includes("not running")
+    || t26.result.content[0].text.includes("Automation");
+  assert("safari tabs (success, not-running, or automation error)", t26ok, t26.result);
+
+  // ── manage_windows ─────────────────────────────────────────────────────────
+
+  // 27. invalid action rejected
+  console.log("\n[manage_windows — extended]");
+  const t27 = await send("tools/call", { name: "manage_windows", arguments: { action: "destroy" } });
+  assert("invalid action rejected", t27.result.isError === true, t27.result);
+
+  // 28. move without position rejected
+  const t28 = await send("tools/call", { name: "manage_windows", arguments: { action: "move", app: "Finder" } });
+  assert("move without position rejected", t28.result.isError === true, t28.result);
+
+  // 29. resize below minimum rejected (size: {width: 50, height: 50})
+  const t29 = await send("tools/call", { name: "manage_windows", arguments: { action: "resize", app: "Finder", size: { width: 50, height: 50 } } });
+  assert("resize below minimum rejected", t29.result.isError === true, t29.result);
+
+  // 30. non-integer window index rejected
+  const t30 = await send("tools/call", { name: "manage_windows", arguments: { action: "list", app: "Finder", window: 1.5 } });
+  assert("non-integer window index rejected", t30.result.isError === true, t30.result);
+
+  // ── app_menu ───────────────────────────────────────────────────────────────
+
+  // 31. missing app rejected
+  console.log("\n[app_menu — extended]");
+  const t31 = await send("tools/call", { name: "app_menu", arguments: { action: "list", app: "" } });
+  assert("missing app rejected", t31.result.isError === true, t31.result);
+
+  // 32. click without menu_path rejected
+  const t32 = await send("tools/call", { name: "app_menu", arguments: { action: "click", app: "Finder" } });
+  assert("click without menu_path rejected", t32.result.isError === true, t32.result);
+
+  // 33. click with menu_path length 1 rejected
+  const t33 = await send("tools/call", { name: "app_menu", arguments: { action: "click", app: "Finder", menu_path: ["File"] } });
+  assert("click with menu_path length 1 rejected", t33.result.isError === true, t33.result);
+
+  // 34. invalid action rejected
+  const t34 = await send("tools/call", { name: "app_menu", arguments: { action: "hover", app: "Finder" } });
+  assert("invalid action rejected", t34.result.isError === true, t34.result);
+
+  // ── set_clipboard ──────────────────────────────────────────────────────────
+
+  // 35. missing content rejected
+  console.log("\n[set_clipboard — extended]");
+  const t35 = await send("tools/call", { name: "set_clipboard", arguments: {} });
+  assert("missing content rejected", t35.result.isError === true, t35.result);
+
+  // 36. number instead of string rejected
+  const t36 = await send("tools/call", { name: "set_clipboard", arguments: { content: 12345 } });
+  assert("number instead of string rejected", t36.result.isError === true, t36.result);
+
+  // ── run_osascript — extended ───────────────────────────────────────────────
+
+  // 37. invalid language rejected
+  console.log("\n[run_osascript — extended]");
+  const t37 = await send("tools/call", { name: "run_osascript", arguments: { script: "return 1", language: "python" } });
+  assert("invalid language rejected", t37.result.isError === true, t37.result);
+
+  // 38. syntax error script returns isError with friendly message
+  const t38 = await send("tools/call", { name: "run_osascript", arguments: { script: "this is not valid applescript @@##$$" } });
+  assert("syntax error returns isError", t38.result.isError === true, t38.result);
+
+  // 39. timeout enforcement: script "delay 10" with timeout=2 (isError, completes in <5s)
+  const t39start = Date.now();
+  const t39 = await send("tools/call", { name: "run_osascript", arguments: { script: "delay 10", timeout: 2 } });
+  const t39elapsed = Date.now() - t39start;
+  assert(
+    "timeout enforcement (isError within 5s)",
+    t39.result.isError === true && t39elapsed < 5000,
+    `isError=${t39.result.isError}, elapsed=${t39elapsed}ms`
+  );
+
+  // ── open_url — extended ────────────────────────────────────────────────────
+
+  // 40. mailto: scheme accepted
+  console.log("\n[open_url — extended]");
+  const t40 = await send("tools/call", { name: "open_url", arguments: { url: "mailto:test@example.com" } });
+  assert("mailto: scheme accepted", !t40.result.isError, t40.result);
+
+  // 41. javascript: scheme rejected
+  const t41 = await send("tools/call", { name: "open_url", arguments: { url: "javascript:alert(1)" } });
+  assert("javascript: scheme rejected", t41.result.isError === true, t41.result);
+
   // Summary
   console.log(`\n${"=".repeat(40)}`);
   console.log(`Results: ${passed} passed, ${failed} failed out of ${passed + failed} tests`);

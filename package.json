@@ -15,5 +15,14 @@
     "@modelcontextprotocol/sdk": "^1.12.0"
   },
   "keywords": ["mcp", "applescript", "osascript", "jxa", "macos", "automation"],
+  "bin": {
+    "mcp-osascript": "server/index.js"
+  },
+  "files": [
+    "server/index.js",
+    "server/executor.js",
+    "README.md",
+    "LICENSE"
+  ],
   "license": "MIT"
 }
