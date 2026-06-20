@@ -31,7 +31,12 @@ function textResult(text) {
 }
 
 function escapeAS(str) {
-  return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return str
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
 }
 
 /** Run AppleScript; return textResult on success, errorResult on failure */
@@ -49,11 +54,22 @@ async function runAS(script, timeoutMs) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 let shuttingDown = false;
-function shutdown() {
+async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   console.error("[mcp-osascript] shutting down");
-  process.exit(0);
+
+  // Force exit safety net
+  const forceTimer = setTimeout(() => process.exit(1), 10_000);
+  forceTimer.unref();
+
+  try {
+    await server.close();
+  } catch {
+    // transport may already be closed
+  }
+
+  process.exitCode = 0;
 }
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);

@@ -1,5 +1,4 @@
 *.dxt
 node_modules/
-package-lock.json
 SECURITY_AUDIT.html
 SECURITY_AUDIT_v2.html

@@ -196,7 +196,8 @@ export async function executeScript(
         detached: true,
         stdio: ["pipe", "pipe", "pipe"],
         env: {
-          ...process.env,
+          PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+          HOME: process.env.HOME || "/tmp",
           LANG: "en_US.UTF-8",
         },
       });
