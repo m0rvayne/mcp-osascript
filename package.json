@@ -1,0 +1,19 @@
+{
+  "name": "mcp-osascript",
+  "version": "1.0.0",
+  "description": "MCP server for macOS automation via AppleScript and JXA. 12 typed tools for clipboard, notifications, browser tabs, window management, menu interaction, and arbitrary script execution.",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "os": ["darwin"],
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node server/test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  },
+  "keywords": ["mcp", "applescript", "osascript", "jxa", "macos", "automation"],
+  "license": "MIT"
+}
