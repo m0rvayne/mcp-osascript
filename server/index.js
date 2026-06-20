@@ -299,7 +299,7 @@ HANDLERS["open_url"] = async (args) => {
   try {
     parsed = new URL(args.url.trim());
   } catch {
-    return errorResult(`Invalid URL: ${args.url}`);
+    return errorResult("Invalid URL format.");
   }
   const allowed = ["http:", "https:", "mailto:"];
   if (!allowed.includes(parsed.protocol)) {

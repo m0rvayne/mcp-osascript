@@ -2,7 +2,7 @@ import { spawn } from "child_process";
 
 // Constants
 export const MAX_CONCURRENT = 5;
-export const MAX_OUTPUT_BYTES = 1024 * 1024;
+export const MAX_OUTPUT_BYTES = 100 * 1024; // 100 KB — textResult truncates at 50K chars, no need for 1 MB
 export const DEFAULT_TIMEOUT = 30000;
 export const MAX_TIMEOUT = 120000;
 export const MAX_SCRIPT_LENGTH = 50000;
@@ -213,6 +213,7 @@ export async function executeScript(
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        if (killTimer) clearTimeout(killTimer);
         resolve({
           stdout,
           stderr,
@@ -222,6 +223,7 @@ export async function executeScript(
       };
 
       // Timeout handling
+      let killTimer;
       const timer = setTimeout(() => {
         timedOut = true;
         try {
@@ -229,7 +231,7 @@ export async function executeScript(
         } catch {
           // process may have already exited
         }
-        setTimeout(() => {
+        killTimer = setTimeout(() => {
           try {
             process.kill(-child.pid, "SIGKILL");
           } catch {

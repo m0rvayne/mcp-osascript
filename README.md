@@ -90,7 +90,7 @@ When a permission is missing, the server returns a clear error with the exact Sy
 npm test
 ```
 
-Runs 18 integration tests covering all tools, input validation, security boundaries (URL scheme blocking, prototype pollution, script size limits), and permission error handling.
+Runs 41 integration tests covering all 12 tools, input validation, security boundaries (URL scheme blocking, prototype pollution, script size limits), timeout enforcement, and permission error handling.
 
 ## Security
 
