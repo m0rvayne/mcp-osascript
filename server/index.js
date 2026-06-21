@@ -389,8 +389,8 @@ end replaceText`;
 
   let script;
   if (browserApp === "Safari") {
-    script = `tell application "Safari"
-  set tabList to {}
+    script = `set tabList to {}
+tell application "Safari"
   repeat with w in every window
     set ct to current tab of w
     repeat with t in every tab of w
@@ -400,13 +400,13 @@ end replaceText`;
       set end of tabList to tabTitle & "|||" & tabURL & "|||" & (isCurrent as text)
     end repeat
   end repeat
-  set text item delimiters to linefeed
-  return tabList as text
 end tell
+set text item delimiters to linefeed
+return tabList as text
 ${replaceHelper}`;
   } else {
-    script = `tell application "${safeBrowser}"
-  set tabList to {}
+    script = `set tabList to {}
+tell application "${safeBrowser}"
   repeat with w in every window
     set activeIdx to active tab index of w
     set tabIdx to 0
@@ -418,9 +418,9 @@ ${replaceHelper}`;
       set end of tabList to tabTitle & "|||" & tabURL & "|||" & (isCurrent as text)
     end repeat
   end repeat
-  set text item delimiters to linefeed
-  return tabList as text
 end tell
+set text item delimiters to linefeed
+return tabList as text
 ${replaceHelper}`;
   }
 
