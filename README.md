@@ -1,4 +1,8 @@
-# mcp-osascript
+<div align="center">
+
+<img src="assets/social-preview.png" alt="mcp-osascript" width="700">
+
+**Let Claude control your Mac.** Move windows, click menus, type text, read clipboard, manage browser tabs — 12 typed tools with input validation and security guardrails.
 
 [![npm version](https://img.shields.io/npm/v/mcp-osascript)](https://www.npmjs.com/package/mcp-osascript)
 [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue)](https://support.apple.com/macos)
@@ -6,7 +10,9 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![Tests: 41 passed](https://img.shields.io/badge/tests-41%20passed-brightgreen)](#testing)
 
-**Let Claude control your Mac.** Move windows, click menus, type text, read clipboard, manage browser tabs — 12 typed tools with input validation and security guardrails.
+</div>
+
+---
 
 ![Demo](assets/demo.gif)
 
