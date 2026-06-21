@@ -8,8 +8,7 @@
 
 **Let Claude control your Mac.** Move windows, click menus, type text, read clipboard, manage browser tabs — 12 typed tools with input validation and security guardrails.
 
-<!-- TODO: Add GIF demo here -->
-<!-- ![Demo](assets/demo.gif) -->
+![Demo](assets/demo.gif)
 
 ## Quick Start
 
