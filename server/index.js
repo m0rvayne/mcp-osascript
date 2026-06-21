@@ -451,7 +451,12 @@ HANDLERS["type_text"] = async (args) => {
   if (args.text.length > 500) {
     return errorResult(`Text too long (${args.text.length} chars). Maximum: 500.`);
   }
-  const r = await runAS(`tell application "System Events"\n  keystroke "${escapeAS(args.text)}"\nend tell`);
+  // Use clipboard + Cmd+V instead of keystroke to avoid keyboard layout issues
+  // (keystroke sends key codes, not characters — Russian layout → garbled text)
+  const r = await runAS(`set the clipboard to "${escapeAS(args.text)}"
+tell application "System Events"
+  key code 9 using command down
+end tell`);
   if (!r.ok) {
     if (r.error.category === "permission_accessibility") return errorResult(ACCESSIBILITY_MSG);
     return errorResult(r.error.friendlyMessage);
@@ -531,15 +536,15 @@ HANDLERS["manage_windows"] = async (args) => {
   const escApp = escapeAS(appName);
 
   if (action === "list") {
-    const r = await runAS(`tell application "System Events" to tell process "${escApp}"
-  set winList to {}
+    const r = await runAS(`set winList to {}
+tell application "System Events" to tell process "${escApp}"
   repeat with w in every window
     set winInfo to (name of w) & "|||" & (position of w as text) & "|||" & (size of w as text)
     set end of winList to winInfo
   end repeat
-  set text item delimiters to linefeed
-  return winList as text
-end tell`);
+end tell
+set text item delimiters to linefeed
+return winList as text`);
     if (!r.ok) {
       if (r.error.category === "permission_accessibility") return errorResult(ACCESSIBILITY_MSG);
       return errorResult(r.error.friendlyMessage);

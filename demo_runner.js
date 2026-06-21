@@ -6,6 +6,12 @@ import { dirname, join } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Screen dimensions (1710x1112, menu bar 25px)
+const SW = 1710, SH = 1112, MB = 25;
+const usableH = SH - MB;
+const halfW = Math.floor(SW / 2);
+const halfH = Math.floor(usableH / 2);
+
 const B = "\x1b[1m", G = "\x1b[32m", Y = "\x1b[33m", R = "\x1b[31m", D = "\x1b[2m", X = "\x1b[0m";
 
 const server = spawn("node", [join(__dirname, "server/index.js")], {
@@ -62,88 +68,148 @@ async function demo() {
   print("");
   await sleep(1500);
 
-  // 1. Open Safari with a page
+  // === 1. Open Safari with GitHub repo ===
   print(`  ${Y}▸${X} open_app ${D}"Safari"${X}`);
-  await sleep(400);
-  print(`  ${G}✓${X} ${await tool("open_app", { name: "Safari" })}`);
-  await sleep(1000);
+  await tool("open_app", { name: "Safari" });
+  print(`  ${G}✓${X} Safari launched`);
+  await sleep(1500);
 
-  // 2. Open URL in Safari
-  print(`  ${Y}▸${X} open_url ${D}"https://github.com"${X}`);
-  await sleep(400);
-  print(`  ${G}✓${X} ${await tool("open_url", { url: "https://github.com" })}`);
-  await sleep(2500);
+  print(`  ${Y}▸${X} open_url ${D}"https://github.com/m0rvayne/mcp-osascript"${X}`);
+  await tool("run_osascript", {
+    script: 'tell application "Safari" to set URL of front document to "https://github.com/m0rvayne/mcp-osascript"',
+  });
+  print(`  ${G}✓${X} Navigated to GitHub`);
+  await sleep(3000);
 
-  // 3. Read browser tabs
+  // === 2. Window dance — 2 loops around 4 quadrants ===
   print("");
-  print(`  ${Y}▸${X} get_browser_tabs ${D}browser: safari${X}`);
-  await sleep(400);
-  const tabsRaw = await tool("get_browser_tabs", { browser: "safari" });
-  const tabs = JSON.parse(tabsRaw);
-  for (const t of tabs.slice(0, 4)) {
-    const title = t.title.length > 50 ? t.title.slice(0, 50) + "…" : t.title;
-    print(`    ${title}${t.active ? ` ${G}★${X}` : ""}`);
+  print(`  ${Y}▸${X} manage_windows ${D}— 2 loops around screen${X}`);
+
+  const positions = [
+    [0,     MB,          halfW, halfH],  // top-left
+    [0,     MB + halfH,  halfW, halfH],  // bottom-left
+    [halfW, MB + halfH,  halfW, halfH],  // bottom-right
+    [halfW, MB,          halfW, halfH],  // top-right
+  ];
+
+  for (let loop = 0; loop < 2; loop++) {
+    for (const [x, y, w, h] of positions) {
+      await tool("run_osascript", {
+        script: `tell application "System Events" to tell process "Safari"\n  set position of window 1 to {${x}, ${y}}\n  set size of window 1 to {${w}, ${h}}\nend tell`,
+      });
+      await sleep(500);
+    }
   }
-  if (tabs.length > 4) print(`    ${D}… and ${tabs.length - 4} more${X}`);
-  await sleep(2000);
 
-  // 4. Clipboard: copy active tab URL
-  print("");
-  const activeUrl = tabs.find((t) => t.active)?.url || "https://github.com";
-  print(`  ${Y}▸${X} set_clipboard ${D}← active tab URL${X}`);
-  await sleep(400);
-  await tool("set_clipboard", { content: activeUrl });
-  print(`  ${G}✓${X} Copied: ${D}${activeUrl}${X}`);
+  // Park on right half
+  await tool("run_osascript", {
+    script: `tell application "System Events" to tell process "Safari"\n  set position of window 1 to {${halfW}, ${MB}}\n  set size of window 1 to {${halfW}, ${usableH}}\nend tell`,
+  });
+  print(`  ${G}✓${X} Window positioned`);
   await sleep(1500);
 
-  print(`  ${Y}▸${X} get_clipboard`);
-  await sleep(400);
-  print(`  ${G}✓${X} ${await tool("get_clipboard")}`);
-  await sleep(1500);
-
-  // 5. Notification
+  // === 3. Notification ===
   print("");
   print(`  ${Y}▸${X} send_notification`);
-  await sleep(400);
-  await tool("send_notification", { title: "mcp-osascript", message: "Yes, I can control your Mac!" });
+  await tool("send_notification", {
+    title: "Hello, Daniel!",
+    message: "Yes, I can fully control your Mac. Windows, menus, keyboard, clipboard, browser — all through natural language.",
+  });
   print(`  ${G}✓${X} Notification sent`);
-  await sleep(2500);
+  await sleep(3000);
 
-  // 6. Frontmost app
+  // === 4. Frontmost app ===
   print("");
   print(`  ${Y}▸${X} get_frontmost_app`);
-  await sleep(400);
   const appRaw = await tool("get_frontmost_app");
   const app = JSON.parse(appRaw);
   print(`  ${G}✓${X} ${app.name} (${app.bundleId})`);
   await sleep(1500);
 
-  // 7. Run JXA
-  print("");
-  print(`  ${Y}▸${X} run_osascript ${D}language: javascript${X}`);
-  await sleep(400);
-  const jxa = await tool("run_osascript", {
-    script: "var d = new Date(); d.toLocaleDateString() + ' ' + d.toLocaleTimeString()",
-    language: "javascript",
-  });
-  print(`  ${G}✓${X} JXA → ${jxa}`);
-  await sleep(1500);
-
-  // 8. Security
+  // === 5. Security ===
   print("");
   print(`  ${Y}▸${X} open_url ${D}"file:///etc/passwd"${X}`);
-  await sleep(400);
   print(`  ${R}✗${X} ${D}${await tool("open_url", { url: "file:///etc/passwd" })}${X}`);
   await sleep(1200);
 
   print(`  ${Y}▸${X} open_url ${D}"javascript:alert(1)"${X}`);
-  await sleep(400);
   print(`  ${R}✗${X} ${D}${await tool("open_url", { url: "javascript:alert(1)" })}${X}`);
   await sleep(2000);
 
-  // Done
+  // === 6. Compose email via Mail API with line-by-line typing effect ===
   print("");
-  await tool("send_notification", { title: "Demo complete", message: "12 tools · 41 tests · MIT" });
+  print(`  ${Y}▸${X} open_app ${D}"Mail"${X} + compose email`);
+
+  await tool("run_osascript", {
+    script: `tell application "Mail"
+  activate
+  delay 2
+  set msgContent to ""
+  set newMsg to make new outgoing message with properties {visible:true, subject:"mcp-osascript — macOS automation for Claude", content:msgContent}
+  tell newMsg
+    make new to recipient at end of to recipients with properties {address:"hello@example.com"}
+  end tell
+  delay 1
+
+  set msgContent to "Hi there!"
+  set content of newMsg to msgContent
+  delay 0.4
+  set msgContent to msgContent & return & return
+  set content of newMsg to msgContent
+  delay 0.3
+  set msgContent to msgContent & "Introducing mcp-osascript — the only macOS"
+  set content of newMsg to msgContent
+  delay 0.35
+  set msgContent to msgContent & return & "MCP server with typed tools and security."
+  set content of newMsg to msgContent
+  delay 0.35
+  set msgContent to msgContent & return & return & "What it can do:"
+  set content of newMsg to msgContent
+  delay 0.35
+  set msgContent to msgContent & return & "- Move and resize windows across your screen"
+  set content of newMsg to msgContent
+  delay 0.3
+  set msgContent to msgContent & return & "- Click any menu item in any application"
+  set content of newMsg to msgContent
+  delay 0.3
+  set msgContent to msgContent & return & "- Read and write clipboard content"
+  set content of newMsg to msgContent
+  delay 0.3
+  set msgContent to msgContent & return & "- Open URLs with scheme allowlist"
+  set content of newMsg to msgContent
+  delay 0.3
+  set msgContent to msgContent & return & "- Type text and press keyboard shortcuts"
+  set content of newMsg to msgContent
+  delay 0.3
+  set msgContent to msgContent & return & "- Read browser tabs from Safari and Chrome"
+  set content of newMsg to msgContent
+  delay 0.3
+  set msgContent to msgContent & return & "- Show native macOS notifications"
+  set content of newMsg to msgContent
+  delay 0.35
+  set msgContent to msgContent & return & return & "Install in 30 seconds: npx mcp-osascript"
+  set content of newMsg to msgContent
+  delay 0.35
+  set msgContent to msgContent & return & return & "12 tools. 41 tests. MIT license."
+  set content of newMsg to msgContent
+  delay 0.35
+  set msgContent to msgContent & return & "Built for developers who want AI"
+  set content of newMsg to msgContent
+  delay 0.3
+  set msgContent to msgContent & return & "to actually do things on their Mac."
+  set content of newMsg to msgContent
+end tell`,
+    timeout: 30,
+  });
+  print(`  ${G}✓${X} Email composed`);
+  await sleep(2500);
+
+  // === 7. Final ===
+  print("");
+  await tool("send_notification", {
+    title: "Demo complete",
+    message: "12 tools · 41 tests · MIT license · npx mcp-osascript",
+  });
   print(`  ${G}${B}Done.${X} ${D}12 tools · 41 tests · npx mcp-osascript${X}`);
   print("");
   await sleep(3000);
@@ -152,4 +218,8 @@ async function demo() {
   process.exit(0);
 }
 
-demo().catch((e) => { console.error("Error:", e.message); server.kill("SIGKILL"); process.exit(1); });
+demo().catch((e) => {
+  console.error("Error:", e.message);
+  server.kill("SIGKILL");
+  process.exit(1);
+});
