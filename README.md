@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/social-preview.png" alt="mcp-osascript" width="700">
+<img src="assets/social-preview.png" alt="mcp-osascript" width="100%">
 
 **Let Claude control your Mac.** Move windows, click menus, type text, read clipboard, manage browser tabs — 12 typed tools with input validation and security guardrails.
 
