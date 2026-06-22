@@ -1,0 +1,8 @@
+assets/
+SECURITY_AUDIT.html
+SECURITY_AUDIT_v2.html
+LAUNCH_CONTENT.md
+server/test.js
+*.tgz
+*.mcpb
+.git/

@@ -1,0 +1,49 @@
+{
+  "manifest_version": "0.3",
+  "name": "mcp-osascript",
+  "display_name": "macOS Automation for Claude",
+  "version": "1.0.0",
+  "description": "Let Claude control your Mac — 12 typed tools for windows, menus, keyboard, clipboard, browser tabs, notifications.",
+  "long_description": "MCP server for macOS automation via AppleScript and JXA. 12 typed tools with input validation and security guardrails. Features self-correcting menu clicks (when Claude picks the wrong menu item, the server returns what's actually there so Claude retries correctly), URL scheme allowlist, environment isolation, and process group kill. 41 integration tests.",
+  "author": {
+    "name": "m0rvayne",
+    "url": "https://github.com/m0rvayne"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/m0rvayne/mcp-osascript"
+  },
+  "homepage": "https://github.com/m0rvayne/mcp-osascript",
+  "support": "https://github.com/m0rvayne/mcp-osascript/issues",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {}
+    }
+  },
+  "tools": [
+    { "name": "run_osascript", "description": "Execute AppleScript or JXA script" },
+    { "name": "get_clipboard", "description": "Read clipboard as text" },
+    { "name": "set_clipboard", "description": "Write text to clipboard" },
+    { "name": "send_notification", "description": "Show macOS notification" },
+    { "name": "open_url", "description": "Open URL in browser (http/https/mailto only)" },
+    { "name": "open_app", "description": "Launch or activate application" },
+    { "name": "get_frontmost_app", "description": "Get active app name and bundle ID" },
+    { "name": "get_browser_tabs", "description": "List tabs in Safari, Chrome, or Arc" },
+    { "name": "type_text", "description": "Type text into active app" },
+    { "name": "press_key", "description": "Press key with modifiers" },
+    { "name": "manage_windows", "description": "List/move/resize/minimize/fullscreen/close windows" },
+    { "name": "app_menu", "description": "List or click menu items in any app" }
+  ],
+  "keywords": ["mcp", "macos", "applescript", "osascript", "jxa", "automation", "claude"],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": ["darwin"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  }
+}
