@@ -3,3 +3,9 @@ node_modules/
 SECURITY_AUDIT.html
 SECURITY_AUDIT_v2.html
 assets/demo.cast
+LAUNCH_CONTENT.md
+CLAUDE.md
+demo_runner.js
+demo.sh
+*.mcpb
+*.tgz
