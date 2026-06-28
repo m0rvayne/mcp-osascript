@@ -13,6 +13,9 @@ import {
   safeError,
   MAX_SCRIPT_LENGTH,
 } from "./executor.js";
+import { execFile as execFileCb } from "node:child_process";
+import { promisify } from "node:util";
+const execFileAsync = promisify(execFileCb);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Result helpers
@@ -37,6 +40,19 @@ function escapeAS(str) {
     .replace(/\n/g, "\\n")
     .replace(/\r/g, "\\r")
     .replace(/\t/g, "\\t");
+}
+
+/** Run a shell command safely via execFile (no shell injection possible) */
+async function runShell(cmd, args, timeoutMs = 10000) {
+  try {
+    const { stdout, stderr } = await execFileAsync(cmd, args, {
+      timeout: timeoutMs,
+      env: { PATH: "/usr/bin:/bin:/usr/sbin:/sbin", HOME: process.env.HOME, LANG: process.env.LANG || "en_US.UTF-8" },
+    });
+    return { ok: true, stdout: stdout.trim(), stderr: stderr.trim() };
+  } catch (err) {
+    return { ok: false, error: safeError(err) };
+  }
 }
 
 /** Run AppleScript; return textResult on success, errorResult on failure */
@@ -75,7 +91,7 @@ process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tool definitions (all 12)
+// Tool definitions (17 tools)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TOOLS = [
@@ -179,18 +195,16 @@ const TOOLS = [
   },
   {
     name: "manage_windows",
-    description: "List, move, resize, minimize, fullscreen, close, or tile application windows. Supports multi-monitor setups — use display parameter to target a specific monitor. Requires Accessibility permission for most actions.",
+    description: "List, move, resize, minimize, fullscreen, or close application windows. Supports multi-monitor setups — use display parameter to target a specific monitor. Requires Accessibility permission for most actions.",
     inputSchema: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["list", "move", "resize", "minimize", "fullscreen", "close", "tile"], description: "Window action. 'tile' arranges multiple windows in a grid on a display." },
+        action: { type: "string", enum: ["list", "move", "resize", "minimize", "fullscreen", "close"], description: "Window action." },
         app: { type: "string", description: "App name. Defaults to frontmost." },
-        window: { type: "number", default: 1, description: "Window index (1-based). For tile: ignored (tiles all windows of the app)." },
+        window: { type: "number", default: 1, description: "Window index (1-based)." },
         position: { type: "object", properties: { x: { type: "number" }, y: { type: "number" } }, description: "For move." },
         size: { type: "object", properties: { width: { type: "number" }, height: { type: "number" } }, description: "For resize." },
-        display: { type: "number", default: 1, description: "Target display number (1=main, 2=secondary, etc.). For move/tile." },
-        layout: { type: "string", enum: ["grid", "horizontal", "vertical"], default: "grid", description: "For tile: how to arrange windows." },
-        count: { type: "number", description: "For tile: how many windows to tile (default: all windows of the app)." },
+        display: { type: "number", default: 1, description: "Target display number (1=main, 2=secondary, etc.). For move." },
       },
       required: ["action"],
     },
@@ -211,6 +225,64 @@ const TOOLS = [
         menu_path: { type: "array", items: { type: "string" }, description: 'Menu path, e.g. ["File", "Save"]. Required for click.' },
       },
       required: ["action", "app"],
+    },
+  },
+  {
+    name: "screenshot",
+    description: "Capture a screenshot of the full screen, a region, or a specific app window. Requires Screen Recording permission in System Settings > Privacy & Security > Screen Recording.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mode: { type: "string", enum: ["fullscreen", "region", "window"], default: "fullscreen", description: "Capture mode." },
+        path: { type: "string", description: "Output file path. Defaults to /tmp/screenshot-<timestamp>.png." },
+        app: { type: "string", description: "For window mode: app name to capture." },
+        window: { type: "number", default: 1, description: "For window mode: window index (1-based)." },
+        region: {
+          type: "object",
+          properties: { x: { type: "number" }, y: { type: "number" }, width: { type: "number" }, height: { type: "number" } },
+          description: "For region mode: capture area {x, y, width, height}.",
+        },
+        display: { type: "number", description: "For fullscreen mode: display number (1=main)." },
+        format: { type: "string", enum: ["png", "jpg"], default: "png", description: "Image format." },
+        clipboard: { type: "boolean", default: false, description: "Save to clipboard instead of file." },
+      },
+    },
+  },
+  {
+    name: "app_visibility",
+    description: "Hide, unhide (show), or quit an application. Hiding keeps the app running but removes its windows from view (like Cmd+H). Requires Accessibility permission for hide/unhide.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["hide", "unhide", "quit"], description: "Action to perform." },
+        app: { type: "string", description: "Application name." },
+      },
+      required: ["action", "app"],
+    },
+  },
+  {
+    name: "file_open",
+    description: "Open a file or folder, optionally in a specific application. Uses macOS 'open' command.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "File or folder path to open." },
+        app: { type: "string", description: "Application to open the file with. If omitted, uses the default app." },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "run_shortcut",
+    description: "List available Apple Shortcuts or run a specific shortcut by name.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["list", "run"], description: "Action to perform." },
+        name: { type: "string", description: "Shortcut name (required for run)." },
+        input: { type: "string", description: "Optional text input to pass to the shortcut." },
+      },
+      required: ["action"],
     },
   },
 ];
@@ -403,7 +475,7 @@ tell application "Safari"
     set ct to current tab of w
     repeat with t in every tab of w
       set tabTitle to my replaceText(name of t, "|||", "|")
-      set tabURL to URL of t
+      set tabURL to my replaceText(URL of t, "|||", "|")
       set isCurrent to (ct is t)
       set end of tabList to tabTitle & "|||" & tabURL & "|||" & (isCurrent as text)
     end repeat
@@ -421,7 +493,7 @@ tell application "${safeBrowser}"
     repeat with t in every tab of w
       set tabIdx to tabIdx + 1
       set tabTitle to my replaceText(title of t, "|||", "|")
-      set tabURL to URL of t
+      set tabURL to my replaceText(URL of t, "|||", "|")
       set isCurrent to (activeIdx = tabIdx)
       set end of tabList to tabTitle & "|||" & tabURL & "|||" & (isCurrent as text)
     end repeat
@@ -619,89 +691,6 @@ end tell`);
     if (!r.ok) return errorResult(r.error.friendlyMessage);
     return textResult("Closed window");
   }
-
-  if (action === "tile") {
-    // Get display info via JXA
-    const displayNum = args.display || 1;
-    const layout = args.layout || "grid";
-
-    const dispR = await executeScript(`
-      ObjC.import("AppKit");
-      var screens = $.NSScreen.screens;
-      var result = [];
-      for (var i = 0; i < screens.count; i++) {
-        var s = screens.objectAtIndex(i);
-        var f = s.frame;
-        // NSScreen y is flipped (0 at bottom), convert to screen coords (0 at top)
-        // Main screen height needed for conversion
-        var mainH = $.NSScreen.screens.objectAtIndex(0).frame.size.height;
-        var screenY = mainH - f.origin.y - f.size.height;
-        result.push({x: f.origin.x, y: screenY, w: f.size.width, h: f.size.height});
-      }
-      JSON.stringify(result);
-    `, "javascript");
-    if (dispR.exitCode !== 0) return errorResult("Failed to get display info");
-
-    let displays;
-    try {
-      displays = JSON.parse(dispR.stdout.trim());
-    } catch {
-      return errorResult("Failed to parse display info");
-    }
-
-    if (displayNum < 1 || displayNum > displays.length) {
-      return errorResult(`Display ${displayNum} not found. Available: 1-${displays.length}`);
-    }
-
-    const disp = displays[displayNum - 1];
-
-    // Count windows to tile
-    const countR = await runAS(`tell application "System Events" to tell process "${escApp}"
-  return count of every window
-end tell`);
-    if (!countR.ok) return errorResult(countR.error.friendlyMessage);
-
-    const totalWins = parseInt(countR.stdout.trim()) || 0;
-    const tileCount = args.count || totalWins;
-    if (tileCount < 1) return errorResult("No windows to tile");
-
-    let cols, rows;
-    if (layout === "vertical") {
-      cols = tileCount;
-      rows = 1;
-    } else if (layout === "horizontal") {
-      cols = 1;
-      rows = tileCount;
-    } else {
-      // grid
-      cols = Math.ceil(Math.sqrt(tileCount));
-      rows = Math.ceil(tileCount / cols);
-    }
-
-    const winW = Math.floor(disp.w / cols);
-    const winH = Math.floor(disp.h / rows);
-
-    // Build AppleScript to position all windows
-    let script = `tell application "System Events" to tell process "${escApp}"\n`;
-    for (let i = 0; i < tileCount; i++) {
-      const c = layout === "horizontal" ? 0 : (layout === "vertical" ? i : i % cols);
-      const r = layout === "horizontal" ? i : (layout === "vertical" ? 0 : Math.floor(i / cols));
-      const x = Math.round(disp.x + c * winW);
-      const y = Math.round(disp.y + r * winH);
-      script += `  try\n`;
-      script += `    set position of window ${i + 1} to {${x}, ${y}}\n`;
-      script += `    set size of window ${i + 1} to {${winW}, ${winH}}\n`;
-      script += `  end try\n`;
-    }
-    script += `end tell`;
-
-    const r = await runAS(script);
-    if (!r.ok) {
-      if (r.error.category === "permission_accessibility") return errorResult(ACCESSIBILITY_MSG);
-      return errorResult(r.error.friendlyMessage);
-    }
-    return textResult(`Tiled ${tileCount} windows (${layout}, ${cols}x${rows}) on display ${displayNum} (${disp.w}x${disp.h})`);
-  }
 };
 
 // ── 13. get_displays ─────────────────────────────────────────────────────────
@@ -831,12 +820,169 @@ end tell`);
   }
 };
 
+// ── 15. screenshot ──────────────────────────────────────────────────────────
+
+HANDLERS["screenshot"] = async (args) => {
+  const mode = args.mode || "fullscreen";
+  const format = args.format || "png";
+  const toClipboard = args.clipboard || false;
+
+  const shellArgs = ["-x"]; // -x = no sound
+
+  if (toClipboard) {
+    shellArgs.push("-c");
+    if (mode === "region" && args.region) {
+      const { x, y, width, height } = args.region;
+      if ([x, y, width, height].some((v) => typeof v !== "number")) {
+        return errorResult("Region requires numeric x, y, width, height.");
+      }
+      shellArgs.push("-R", `${x},${y},${width},${height}`);
+    }
+    const r = await runShell("screencapture", shellArgs);
+    if (!r.ok) return errorResult(`Screenshot failed: ${r.error}`);
+    return textResult("Screenshot saved to clipboard.");
+  }
+
+  const filePath = args.path || `/tmp/screenshot-${Date.now()}.${format}`;
+  if (filePath.includes("\0")) return errorResult("Invalid path.");
+  shellArgs.push("-t", format);
+
+  if (mode === "region") {
+    if (!args.region || [args.region.x, args.region.y, args.region.width, args.region.height].some((v) => typeof v !== "number")) {
+      return errorResult("Region mode requires region with numeric x, y, width, height.");
+    }
+    shellArgs.push("-R", `${args.region.x},${args.region.y},${args.region.width},${args.region.height}`);
+  } else if (mode === "window") {
+    let appName = args.app;
+    if (!appName) {
+      const front = await runAS(`tell application "System Events" to return name of first application process whose frontmost is true`);
+      if (!front.ok) return errorResult(`Cannot determine frontmost app: ${front.error.friendlyMessage}`);
+      appName = front.stdout;
+    }
+    const winIdx = args.window || 1;
+    const safeAppName = JSON.stringify(appName);
+    const r = await executeScript(`
+      ObjC.import("CoreGraphics");
+      var info = $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, 0);
+      var wins = ObjC.deepUnwrap(info);
+      var target = ${safeAppName};
+      var matches = [];
+      for (var i = 0; i < wins.length; i++) {
+        if (wins[i].kCGWindowOwnerName === target && wins[i].kCGWindowLayer === 0) {
+          matches.push(wins[i].kCGWindowNumber);
+        }
+      }
+      JSON.stringify(matches);
+    `, "javascript");
+    if (r.exitCode !== 0) return errorResult("Failed to get window list.");
+    let windowIds;
+    try { windowIds = JSON.parse(r.stdout.trim()); } catch { return errorResult("Failed to parse window IDs."); }
+    if (windowIds.length === 0) return errorResult(`No windows found for '${appName}'.`);
+    if (winIdx > windowIds.length) return errorResult(`Window ${winIdx} not found. ${appName} has ${windowIds.length} window(s).`);
+    shellArgs.push("-l", String(windowIds[winIdx - 1]));
+  } else if (mode === "fullscreen" && args.display) {
+    shellArgs.push("-D", String(Math.max(1, Math.floor(args.display))));
+  }
+
+  shellArgs.push(filePath);
+  const r = await runShell("screencapture", shellArgs);
+  if (!r.ok) return errorResult(`Screenshot failed: ${r.error}`);
+  return textResult(`Screenshot saved: ${filePath}`);
+};
+
+// ── 16. app_visibility ──────────────────────────────────────────────────────
+
+HANDLERS["app_visibility"] = async (args) => {
+  if (!args.app || typeof args.app !== "string" || !args.app.trim()) {
+    return errorResult("Parameter 'app' is required.");
+  }
+  if (!["hide", "unhide", "quit"].includes(args.action)) {
+    return errorResult("Parameter 'action' must be hide, unhide, or quit.");
+  }
+  const appName = args.app.trim();
+  if (/[/\\]/.test(appName)) return errorResult("Invalid app name.");
+  const escApp = escapeAS(appName);
+
+  if (args.action === "hide") {
+    const r = await runAS(`tell application "System Events" to set visible of process "${escApp}" to false`);
+    if (!r.ok) {
+      if (r.error.category === "permission_accessibility") return errorResult(ACCESSIBILITY_MSG);
+      return errorResult(r.error.friendlyMessage);
+    }
+    return textResult(`Hidden: ${appName}`);
+  }
+
+  if (args.action === "unhide") {
+    const r = await runAS(`tell application "System Events" to set visible of process "${escApp}" to true`);
+    if (!r.ok) {
+      if (r.error.category === "permission_accessibility") return errorResult(ACCESSIBILITY_MSG);
+      return errorResult(r.error.friendlyMessage);
+    }
+    return textResult(`Shown: ${appName}`);
+  }
+
+  if (args.action === "quit") {
+    const r = await runAS(`tell application "${escApp}" to quit`);
+    if (!r.ok) return errorResult(`Failed to quit ${appName}: ${r.error.friendlyMessage}`);
+    return textResult(`Quit: ${appName}`);
+  }
+};
+
+// ── 17. file_open ───────────────────────────────────────────────────────────
+
+HANDLERS["file_open"] = async (args) => {
+  if (!args.path || typeof args.path !== "string" || !args.path.trim()) {
+    return errorResult("Parameter 'path' is required.");
+  }
+  const filePath = args.path.trim();
+  if (filePath.includes("\0")) return errorResult("Invalid path.");
+
+  const shellArgs = [filePath];
+  if (args.app && typeof args.app === "string" && args.app.trim()) {
+    const appName = args.app.trim();
+    if (/[/\\]/.test(appName)) return errorResult("Invalid app name.");
+    shellArgs.unshift("-a", appName);
+  }
+
+  const r = await runShell("open", shellArgs);
+  if (!r.ok) return errorResult(`Failed to open: ${r.error}`);
+  return textResult(`Opened: ${filePath}${args.app ? ` in ${args.app}` : ""}`);
+};
+
+// ── 18. run_shortcut ────────────────────────────────────────────────────────
+
+HANDLERS["run_shortcut"] = async (args) => {
+  if (!["list", "run"].includes(args.action)) {
+    return errorResult("Parameter 'action' must be list or run.");
+  }
+
+  if (args.action === "list") {
+    const r = await runShell("shortcuts", ["list"]);
+    if (!r.ok) return errorResult(`Failed to list shortcuts: ${r.error}`);
+    const shortcuts = r.stdout.split("\n").filter((s) => s.trim());
+    return textResult(JSON.stringify(shortcuts, null, 2));
+  }
+
+  if (args.action === "run") {
+    if (!args.name || typeof args.name !== "string" || !args.name.trim()) {
+      return errorResult("Parameter 'name' is required for run.");
+    }
+    const shellArgs = ["run", args.name.trim()];
+    if (args.input && typeof args.input === "string") {
+      shellArgs.push("-i", args.input);
+    }
+    const r = await runShell("shortcuts", shellArgs, 30000);
+    if (!r.ok) return errorResult(`Shortcut failed: ${r.error}`);
+    return textResult(r.stdout || "Shortcut completed.");
+  }
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Server setup
 // ─────────────────────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "mcp-osascript", version: "1.0.0" },
+  { name: "mcp-osascript", version: "1.1.1" },
   { capabilities: { tools: {} } },
 );
 

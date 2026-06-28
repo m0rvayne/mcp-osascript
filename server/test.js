@@ -104,10 +104,10 @@ async function runTests() {
   assert("initialize succeeds", init.result != null, init);
   await send("notifications/initialized", {});
 
-  // 2. List tools — should return 12 tools
+  // 2. List tools — should return 17 tools
   console.log("\n[tools/list]");
   const tools = await send("tools/list", {});
-  assert("tools/list returns 12 tools", tools.result.tools.length === 13, tools.result.tools.length);
+  assert("tools/list returns 17 tools", tools.result.tools.length === 17, tools.result.tools.length);
 
   // 3. run_osascript — simple math
   console.log("\n[run_osascript]");
@@ -317,6 +317,82 @@ async function runTests() {
   // 41. javascript: scheme rejected
   const t41 = await send("tools/call", { name: "open_url", arguments: { url: "javascript:alert(1)" } });
   assert("javascript: scheme rejected", t41.result.isError === true, t41.result);
+
+  // ── screenshot ─────────────────────────────────────────────────────────────
+
+  console.log("\n[screenshot]");
+
+  // 42. fullscreen screenshot to /tmp
+  const t42 = await send("tools/call", { name: "screenshot", arguments: { mode: "fullscreen", path: "/tmp/mcp-test-screenshot.png" } });
+  assert("fullscreen screenshot (success or permission error)", !t42.result.isError || t42.result.content[0].text.includes("permission"), t42.result);
+
+  // 43. region mode without region rejected
+  const t43 = await send("tools/call", { name: "screenshot", arguments: { mode: "region" } });
+  assert("region without coords rejected", t43.result.isError === true, t43.result);
+
+  // 44. window mode for nonexistent app
+  const t44 = await send("tools/call", { name: "screenshot", arguments: { mode: "window", app: "NonExistentApp12345" } });
+  assert("window mode nonexistent app rejected", t44.result.isError === true, t44.result);
+
+  // ── app_visibility ─────────────────────────────────────────────────────────
+
+  console.log("\n[app_visibility]");
+
+  // 45. invalid action rejected
+  const t45 = await send("tools/call", { name: "app_visibility", arguments: { action: "minimize", app: "Finder" } });
+  assert("invalid action rejected", t45.result.isError === true, t45.result);
+
+  // 46. missing app rejected
+  const t46 = await send("tools/call", { name: "app_visibility", arguments: { action: "hide", app: "" } });
+  assert("missing app rejected", t46.result.isError === true, t46.result);
+
+  // 47. invalid app name rejected
+  const t47 = await send("tools/call", { name: "app_visibility", arguments: { action: "hide", app: "Bad/App" } });
+  assert("invalid app name rejected", t47.result.isError === true, t47.result);
+
+  // 48. hide Finder (success or accessibility error)
+  const t48 = await send("tools/call", { name: "app_visibility", arguments: { action: "hide", app: "Finder" } });
+  assert("hide Finder (success or accessibility)", !t48.result.isError || t48.result.content[0].text.includes("ccessib"), t48.result);
+
+  // 49. unhide Finder
+  const t49 = await send("tools/call", { name: "app_visibility", arguments: { action: "unhide", app: "Finder" } });
+  assert("unhide Finder (success or accessibility)", !t49.result.isError || t49.result.content[0].text.includes("ccessib"), t49.result);
+
+  // ── file_open ──────────────────────────────────────────────────────────────
+
+  console.log("\n[file_open]");
+
+  // 50. missing path rejected
+  const t50 = await send("tools/call", { name: "file_open", arguments: { path: "" } });
+  assert("missing path rejected", t50.result.isError === true, t50.result);
+
+  // 51. open /tmp (should succeed — it's a directory)
+  const t51 = await send("tools/call", { name: "file_open", arguments: { path: "/tmp" } });
+  assert("open /tmp succeeds", !t51.result.isError, t51.result);
+
+  // 52. invalid app name rejected
+  const t52 = await send("tools/call", { name: "file_open", arguments: { path: "/tmp", app: "Bad/App" } });
+  assert("invalid app name rejected", t52.result.isError === true, t52.result);
+
+  // ── run_shortcut ───────────────────────────────────────────────────────────
+
+  console.log("\n[run_shortcut]");
+
+  // 53. list shortcuts (should succeed)
+  const t53 = await send("tools/call", { name: "run_shortcut", arguments: { action: "list" } });
+  assert("list shortcuts succeeds", !t53.result.isError, t53.result);
+
+  // 54. invalid action rejected
+  const t54 = await send("tools/call", { name: "run_shortcut", arguments: { action: "delete" } });
+  assert("invalid action rejected", t54.result.isError === true, t54.result);
+
+  // 55. run without name rejected
+  const t55 = await send("tools/call", { name: "run_shortcut", arguments: { action: "run" } });
+  assert("run without name rejected", t55.result.isError === true, t55.result);
+
+  // 56. run with empty name rejected
+  const t56 = await send("tools/call", { name: "run_shortcut", arguments: { action: "run", name: "" } });
+  assert("run with empty name rejected", t56.result.isError === true, t56.result);
 
   // Summary
   console.log(`\n${"=".repeat(40)}`);
