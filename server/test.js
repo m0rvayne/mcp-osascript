@@ -107,7 +107,7 @@ async function runTests() {
   // 2. List tools — should return 12 tools
   console.log("\n[tools/list]");
   const tools = await send("tools/list", {});
-  assert("tools/list returns 12 tools", tools.result.tools.length === 12, tools.result.tools.length);
+  assert("tools/list returns 12 tools", tools.result.tools.length === 13, tools.result.tools.length);
 
   // 3. run_osascript — simple math
   console.log("\n[run_osascript]");

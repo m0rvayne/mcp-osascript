@@ -179,18 +179,26 @@ const TOOLS = [
   },
   {
     name: "manage_windows",
-    description: "List, move, resize, minimize, fullscreen, or close application windows. Requires Accessibility permission for most actions.",
+    description: "List, move, resize, minimize, fullscreen, close, or tile application windows. Supports multi-monitor setups — use display parameter to target a specific monitor. Requires Accessibility permission for most actions.",
     inputSchema: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["list", "move", "resize", "minimize", "fullscreen", "close"], description: "Window action." },
+        action: { type: "string", enum: ["list", "move", "resize", "minimize", "fullscreen", "close", "tile"], description: "Window action. 'tile' arranges multiple windows in a grid on a display." },
         app: { type: "string", description: "App name. Defaults to frontmost." },
-        window: { type: "number", default: 1, description: "Window index (1-based)." },
+        window: { type: "number", default: 1, description: "Window index (1-based). For tile: ignored (tiles all windows of the app)." },
         position: { type: "object", properties: { x: { type: "number" }, y: { type: "number" } }, description: "For move." },
         size: { type: "object", properties: { width: { type: "number" }, height: { type: "number" } }, description: "For resize." },
+        display: { type: "number", default: 1, description: "Target display number (1=main, 2=secondary, etc.). For move/tile." },
+        layout: { type: "string", enum: ["grid", "horizontal", "vertical"], default: "grid", description: "For tile: how to arrange windows." },
+        count: { type: "number", description: "For tile: how many windows to tile (default: all windows of the app)." },
       },
       required: ["action"],
     },
+  },
+  {
+    name: "get_displays",
+    description: "Get information about all connected displays — position, size, and which is the main display. Useful for multi-monitor window management.",
+    inputSchema: { type: "object", properties: {} },
   },
   {
     name: "app_menu",
@@ -611,9 +619,119 @@ end tell`);
     if (!r.ok) return errorResult(r.error.friendlyMessage);
     return textResult("Closed window");
   }
+
+  if (action === "tile") {
+    // Get display info via JXA
+    const displayNum = args.display || 1;
+    const layout = args.layout || "grid";
+
+    const dispR = await executeScript(`
+      ObjC.import("AppKit");
+      var screens = $.NSScreen.screens;
+      var result = [];
+      for (var i = 0; i < screens.count; i++) {
+        var s = screens.objectAtIndex(i);
+        var f = s.frame;
+        // NSScreen y is flipped (0 at bottom), convert to screen coords (0 at top)
+        // Main screen height needed for conversion
+        var mainH = $.NSScreen.screens.objectAtIndex(0).frame.size.height;
+        var screenY = mainH - f.origin.y - f.size.height;
+        result.push({x: f.origin.x, y: screenY, w: f.size.width, h: f.size.height});
+      }
+      JSON.stringify(result);
+    `, "javascript");
+    if (dispR.exitCode !== 0) return errorResult("Failed to get display info");
+
+    let displays;
+    try {
+      displays = JSON.parse(dispR.stdout.trim());
+    } catch {
+      return errorResult("Failed to parse display info");
+    }
+
+    if (displayNum < 1 || displayNum > displays.length) {
+      return errorResult(`Display ${displayNum} not found. Available: 1-${displays.length}`);
+    }
+
+    const disp = displays[displayNum - 1];
+
+    // Count windows to tile
+    const countR = await runAS(`tell application "System Events" to tell process "${escApp}"
+  return count of every window
+end tell`);
+    if (!countR.ok) return errorResult(countR.error.friendlyMessage);
+
+    const totalWins = parseInt(countR.stdout.trim()) || 0;
+    const tileCount = args.count || totalWins;
+    if (tileCount < 1) return errorResult("No windows to tile");
+
+    let cols, rows;
+    if (layout === "vertical") {
+      cols = tileCount;
+      rows = 1;
+    } else if (layout === "horizontal") {
+      cols = 1;
+      rows = tileCount;
+    } else {
+      // grid
+      cols = Math.ceil(Math.sqrt(tileCount));
+      rows = Math.ceil(tileCount / cols);
+    }
+
+    const winW = Math.floor(disp.w / cols);
+    const winH = Math.floor(disp.h / rows);
+
+    // Build AppleScript to position all windows
+    let script = `tell application "System Events" to tell process "${escApp}"\n`;
+    for (let i = 0; i < tileCount; i++) {
+      const c = layout === "horizontal" ? 0 : (layout === "vertical" ? i : i % cols);
+      const r = layout === "horizontal" ? i : (layout === "vertical" ? 0 : Math.floor(i / cols));
+      const x = Math.round(disp.x + c * winW);
+      const y = Math.round(disp.y + r * winH);
+      script += `  try\n`;
+      script += `    set position of window ${i + 1} to {${x}, ${y}}\n`;
+      script += `    set size of window ${i + 1} to {${winW}, ${winH}}\n`;
+      script += `  end try\n`;
+    }
+    script += `end tell`;
+
+    const r = await runAS(script);
+    if (!r.ok) {
+      if (r.error.category === "permission_accessibility") return errorResult(ACCESSIBILITY_MSG);
+      return errorResult(r.error.friendlyMessage);
+    }
+    return textResult(`Tiled ${tileCount} windows (${layout}, ${cols}x${rows}) on display ${displayNum} (${disp.w}x${disp.h})`);
+  }
 };
 
-// ── 12. app_menu ─────────────────────────────────────────────────────────────
+// ── 13. get_displays ─────────────────────────────────────────────────────────
+
+HANDLERS["get_displays"] = async () => {
+  const r = await executeScript(`
+    ObjC.import("AppKit");
+    var screens = $.NSScreen.screens;
+    var result = [];
+    for (var i = 0; i < screens.count; i++) {
+      var s = screens.objectAtIndex(i);
+      var f = s.frame;
+      var mainH = $.NSScreen.screens.objectAtIndex(0).frame.size.height;
+      var screenY = mainH - f.origin.y - f.size.height;
+      result.push({
+        display: i + 1,
+        x: f.origin.x,
+        y: screenY,
+        width: f.size.width,
+        height: f.size.height,
+        main: i === 0
+      });
+    }
+    JSON.stringify(result, null, 2);
+  `, "javascript");
+  if (r.exitCode !== 0) return errorResult("Failed to get display info");
+  return textResult(r.stdout.trim());
+};
+
+// ── 14. app_menu ─────────────────────────────────────────────────────────────
 
 HANDLERS["app_menu"] = async (args) => {
   if (!args || !["list", "click"].includes(args.action)) {
