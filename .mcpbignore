@@ -6,3 +6,9 @@ server/test.js
 *.tgz
 *.mcpb
 .git/
+CLAUDE.md
+glama.json
+demo_runner.js
+demo.sh
+*.dxt
+.DS_Store
