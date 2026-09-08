@@ -8,7 +8,7 @@
 [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue)](https://support.apple.com/macos)
 [![Node 18+](https://img.shields.io/badge/node-18%2B-green)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
-[![Tests: 64 passed](https://img.shields.io/badge/tests-64%20passed-brightgreen)](#testing)
+[![Tests: 80 passed](https://img.shields.io/badge/tests-80%20passed-brightgreen)](#testing)
 
 </div>
 
@@ -129,7 +129,7 @@ Server: "Clicked: File > Export as PDF..."
 | Error sanitization (paths, tokens) | **Yes** | No | No |
 | Prototype pollution protection | **Object.create(null)** | No | No |
 | Self-correcting menu click | **Yes** | No | No |
-| Integration tests | **64** | 0 | 0 |
+| Integration tests | **80** | 0 | 0 |
 | Stdin piping (no temp files) | **Yes** | Temp files | Temp files |
 
 ## Permissions
@@ -154,7 +154,7 @@ in System Settings > Privacy & Security > Accessibility."
 npm test
 ```
 
-64 integration tests covering all 17 tools — input validation, security boundaries (URL scheme blocking, prototype pollution, script size limits), timeout enforcement, and permission error handling.
+80 integration tests covering all 17 tools — input validation, security boundaries (URL scheme blocking, prototype pollution, script size limits), timeout enforcement, permission error handling, and regressions for every finding of the security audit.
 
 <details>
 <summary>Security & Architecture</summary>
@@ -168,6 +168,10 @@ npm test
 - Child processes get minimal env: `PATH`, `HOME`, `LANG` only — no API keys or secrets leak.
 - URL scheme allowlist — `file://`, `smb://`, `vnc://`, `javascript:` all blocked.
 - Handler dispatch uses `Object.create(null)` — no prototype pollution.
+- Externally-sourced text (browser tab titles, window titles, menu items, clipboard) is returned inside an explicit `<untrusted-data>` envelope, so a web page that renames itself cannot smuggle instructions into the model's context.
+- `file_open` refuses anything that parses as a URL — `open(1)` resolves URLs as well as paths, so without that check it would quietly annul `open_url`'s scheme allowlist.
+- `screenshot` never overwrites an existing file unless `overwrite: true`, and the extension must match the format.
+- Every list-building tool strips `|`, CR and LF from app-supplied names, so a crafted window or tab title cannot forge a record.
 
 ### Reliability
 

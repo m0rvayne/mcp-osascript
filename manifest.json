@@ -2,9 +2,9 @@
   "manifest_version": "0.3",
   "name": "mcp-osascript",
   "display_name": "macOS Automation for Claude",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "Let Claude control your Mac — 17 typed tools for windows, menus, keyboard, clipboard, browser tabs, screenshots, notifications.",
-  "long_description": "MCP server for macOS automation via AppleScript and JXA. 17 typed tools with input validation and security guardrails. Features self-correcting menu clicks (when Claude picks the wrong menu item, the server returns what's actually there so Claude retries correctly), multi-monitor awareness, screenshot capture, Apple Shortcuts integration, URL scheme allowlist, environment isolation, and process group kill. 64 integration tests.",
+  "long_description": "MCP server for macOS automation via AppleScript and JXA. 17 typed tools with input validation and security guardrails. Features self-correcting menu clicks (when Claude picks the wrong menu item, the server returns what's actually there so Claude retries correctly), multi-monitor awareness, screenshot capture, Apple Shortcuts integration, URL scheme allowlist, environment isolation, and process group kill. 80 integration tests, and a third-party security audit of every tool.",
   "author": {
     "name": "m0rvayne",
     "url": "https://github.com/m0rvayne"

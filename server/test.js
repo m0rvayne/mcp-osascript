@@ -130,7 +130,8 @@ async function runTests() {
   console.log("\n[clipboard]");
   await send("tools/call", { name: "set_clipboard", arguments: { content: "mcp-test-123" } });
   const r5 = await send("tools/call", { name: "get_clipboard", arguments: {} });
-  assert("clipboard round-trip", r5.result.content[0].text === "mcp-test-123", r5.result.content[0].text);
+  assert("clipboard round-trip", r5.result.content[0].text.includes("mcp-test-123"), r5.result.content[0].text);
+  assert("clipboard marked untrusted", r5.result.content[0].text.includes("<untrusted-data"), r5.result.content[0].text);
 
   // 8. send_notification
   console.log("\n[send_notification]");
@@ -323,7 +324,7 @@ async function runTests() {
   console.log("\n[screenshot]");
 
   // 42. fullscreen screenshot to /tmp
-  const t42 = await send("tools/call", { name: "screenshot", arguments: { mode: "fullscreen", path: "/tmp/mcp-test-screenshot.png" } });
+  const t42 = await send("tools/call", { name: "screenshot", arguments: { mode: "fullscreen", path: "/tmp/mcp-test-screenshot.png", overwrite: true } });
   assert("fullscreen screenshot (success or permission error)", !t42.result.isError || t42.result.content[0].text.includes("permission"), t42.result);
 
   // 43. region mode without region rejected
@@ -410,8 +411,8 @@ async function runTests() {
   const t59 = await send("tools/call", { name: "screenshot", arguments: { mode: "window", app: "NonExistentApp12345", clipboard: true } });
   assert("screenshot window+clipboard honours mode", t59.result.isError === true, t59.result);
 
-  // 60. file_open: a path starting with "-" is a filename, not a flag
-  const t60 = await send("tools/call", { name: "file_open", arguments: { path: "-h" } });
+  // 60. file_open: an absolute path starting with "-" is a filename, not a flag
+  const t60 = await send("tools/call", { name: "file_open", arguments: { path: "/tmp/-h" } });
   const t60ok = t60.result.isError === true && t60.result.content[0].text.includes("does not exist");
   assert("file_open treats leading-dash path as filename", t60ok, t60.result.content[0].text);
 
@@ -426,7 +427,7 @@ async function runTests() {
   // Only meaningful when the paste actually ran — without Accessibility it fails early.
   const t62ok = t62type.result.isError
     ? true
-    : t62clip.result.content[0].text === "sentinel-clip-42";
+    : t62clip.result.content[0].text.includes("sentinel-clip-42");
   assert("type_text restores clipboard (or accessibility denied)", t62ok, t62clip.result.content[0].text);
 
   // 63. CGWindowList bridge: deepUnwrap on a raw CFArrayRef used to yield a
@@ -445,10 +446,84 @@ async function runTests() {
   //     (kCGWindowOwnerName is localized — matching is done on PID now).
   const front = await send("tools/call", { name: "get_frontmost_app", arguments: {} });
   const frontName = JSON.parse(front.result.content[0].text).name;
-  const t64 = await send("tools/call", { name: "screenshot", arguments: { mode: "window", app: frontName, path: "/tmp/mcp-test-window.png" } });
+  const t64 = await send("tools/call", { name: "screenshot", arguments: { mode: "window", app: frontName, path: "/tmp/mcp-test-window.png", overwrite: true } });
   const t64text = t64.result.content[0].text;
   const t64ok = !t64.result.isError || t64text.includes("No windows found");
   assert("screenshot window mode resolves frontmost app", t64ok, t64text);
+
+  // ── security audit regressions (v1.1.3) ───────────────────────────────────
+
+  console.log("\n[audit regressions]");
+
+  // 65. file_open must not become an unrestricted URL launcher
+  const a65 = await send("tools/call", { name: "file_open", arguments: { path: "smb://attacker.example/share" } });
+  assert("file_open rejects URL schemes", a65.result.isError === true && a65.result.content[0].text.includes("open_url"), a65.result.content[0].text);
+
+  // 66. relative paths have no meaning server-side
+  const a66 = await send("tools/call", { name: "file_open", arguments: { path: "relative/path.txt" } });
+  assert("file_open rejects relative path", a66.result.isError === true, a66.result.content[0].text);
+
+  // 67. screenshot must not silently clobber an existing file
+  const a67 = await send("tools/call", { name: "screenshot", arguments: { mode: "region", region: { x: 0, y: 0, width: 100, height: 100 }, path: "/tmp/mcp-test-screenshot.png" } });
+  assert("screenshot refuses to overwrite by default", a67.result.isError === true && a67.result.content[0].text.includes("overwrite"), a67.result.content[0].text);
+
+  // 68. extension must match format, so 'path' cannot target an arbitrary file
+  const a68 = await send("tools/call", { name: "screenshot", arguments: { mode: "fullscreen", path: "/tmp/mcp-test.zshrc" } });
+  assert("screenshot rejects mismatched extension", a68.result.isError === true, a68.result.content[0].text);
+
+  // 69. press_key: prototype-chain names must not reach the script
+  for (const proto of ["constructor", "__proto__"]) {
+    const a69 = await send("tools/call", { name: "press_key", arguments: { key: proto } });
+    assert(`press_key rejects '${proto}'`, a69.result.isError === true && a69.result.content[0].text.includes("Unknown key"), a69.result.content[0].text);
+  }
+
+  // 70. Infinity survives JSON.parse and used to splice into the script
+  const a70 = await send("tools/call", { name: "manage_windows", arguments: { action: "move", app: "Finder", position: { x: 1e999, y: 0 } } });
+  assert("manage_windows rejects non-finite position", a70.result.isError === true, a70.result.content[0].text);
+
+  // 71. Infinity also sailed past the `width < 100` guard
+  const a71 = await send("tools/call", { name: "manage_windows", arguments: { action: "resize", app: "Finder", size: { width: 1e999, height: 500 } } });
+  assert("manage_windows rejects non-finite size", a71.result.isError === true, a71.result.content[0].text);
+
+  // 72. window geometry must be real numbers, not 0 from a NaN coercion
+  const a72 = await send("tools/call", { name: "manage_windows", arguments: { action: "list", app: "Finder" } });
+  let a72ok = a72.result.content[0].text.includes("Accessibility");
+  if (!a72ok) {
+    const body = a72.result.content[0].text.replace(/^[\s\S]*?<untrusted-data[^>]*>/, "").replace(/<\/untrusted-data>[\s\S]*$/, "");
+    const parsed = JSON.parse(body);
+    a72ok = parsed.windows.length === 0 || parsed.windows.every(
+      (w) => Number.isFinite(w.size.width) && Number.isFinite(w.size.height) && w.size.width > 0
+    );
+  }
+  assert("window list reports parseable geometry", a72ok, a72.result.content[0].text.slice(0, 200));
+
+  // 73. menu_path element types are unchecked by the SDK
+  const a73 = await send("tools/call", { name: "app_menu", arguments: { action: "click", app: "Finder", menu_path: ["File", 5] } });
+  assert("app_menu rejects non-string menu_path entry", a73.result.isError === true && !a73.result.content[0].text.includes("Internal error"), a73.result.content[0].text);
+
+  // 74. app_visibility must match open_app's app-name rule
+  const a74 = await send("tools/call", { name: "app_visibility", arguments: { action: "hide", app: "Disk:Applications:Foo" } });
+  assert("app_visibility rejects ':' in app name", a74.result.isError === true, a74.result.content[0].text);
+
+  // 75. escaping can double the length — the limit must apply to the escaped form
+  const a75 = await send("tools/call", { name: "set_clipboard", arguments: { content: "\\".repeat(30000) } });
+  assert("set_clipboard limits the escaped length", a75.result.isError === true && !a75.result.content[0].text.includes("Internal error"), a75.result.content[0].text);
+
+  // 76. browser tabs are attacker-controlled and must be fenced
+  const a76 = await send("tools/call", { name: "get_browser_tabs", arguments: { browser: "safari" } });
+  const a76ok = a76.result.isError || a76.result.content[0].text.includes("<untrusted-data");
+  assert("browser tabs marked untrusted", a76ok, a76.result.content[0].text.slice(0, 120));
+
+  // 77. run_shortcut: -i is --input-path and must be staged as a file, with the
+  //     options BEFORE "--" (otherwise swift-argument-parser rejects them as
+  //     unexpected positionals and the input silently never arrives).
+  const a77 = await send("tools/call", { name: "run_shortcut", arguments: { action: "run", name: "NoSuchShortcut12345", input: "hello" } });
+  const a77text = a77.result.content[0].text;
+  assert("run_shortcut passes input without arg-order breakage", !a77text.includes("unexpected argument"), a77text);
+
+  // 78. input must be text, not a caller-supplied path (that was a file-read primitive)
+  const a78 = await send("tools/call", { name: "run_shortcut", arguments: { action: "run", name: "X", input: { a: 1 } } });
+  assert("run_shortcut rejects non-string input", a78.result.isError === true && a78.result.content[0].text.includes("must be a string"), a78.result.content[0].text);
 
   // Summary
   console.log(`\n${"=".repeat(40)}`);
