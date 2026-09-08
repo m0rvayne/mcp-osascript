@@ -394,6 +394,62 @@ async function runTests() {
   const t56 = await send("tools/call", { name: "run_shortcut", arguments: { action: "run", name: "" } });
   assert("run with empty name rejected", t56.result.isError === true, t56.result);
 
+  // ── v1.1.2 regression tests ────────────────────────────────────────────────
+
+  console.log("\n[regressions]");
+
+  // 57. screenshot: unknown mode rejected instead of silently falling back to fullscreen
+  const t57 = await send("tools/call", { name: "screenshot", arguments: { mode: "everything" } });
+  assert("screenshot unknown mode rejected", t57.result.isError === true, t57.result);
+
+  // 58. screenshot: unknown format rejected
+  const t58 = await send("tools/call", { name: "screenshot", arguments: { format: "bmp" } });
+  assert("screenshot unknown format rejected", t58.result.isError === true, t58.result);
+
+  // 59. screenshot: clipboard mode honours mode=window (used to silently shoot fullscreen)
+  const t59 = await send("tools/call", { name: "screenshot", arguments: { mode: "window", app: "NonExistentApp12345", clipboard: true } });
+  assert("screenshot window+clipboard honours mode", t59.result.isError === true, t59.result);
+
+  // 60. file_open: a path starting with "-" is a filename, not a flag
+  const t60 = await send("tools/call", { name: "file_open", arguments: { path: "-h" } });
+  const t60ok = t60.result.isError === true && t60.result.content[0].text.includes("does not exist");
+  assert("file_open treats leading-dash path as filename", t60ok, t60.result.content[0].text);
+
+  // 61. manage_windows: dead 'display' param is gone from the schema
+  const schema = tools.result.tools.find((t) => t.name === "manage_windows").inputSchema;
+  assert("manage_windows has no dead 'display' param", schema.properties.display === undefined, Object.keys(schema.properties));
+
+  // 62. type_text restores the clipboard it borrowed
+  await send("tools/call", { name: "set_clipboard", arguments: { content: "sentinel-clip-42" } });
+  const t62type = await send("tools/call", { name: "type_text", arguments: { text: "x" } });
+  const t62clip = await send("tools/call", { name: "get_clipboard", arguments: {} });
+  // Only meaningful when the paste actually ran — without Accessibility it fails early.
+  const t62ok = t62type.result.isError
+    ? true
+    : t62clip.result.content[0].text === "sentinel-clip-42";
+  assert("type_text restores clipboard (or accessibility denied)", t62ok, t62clip.result.content[0].text);
+
+  // 63. CGWindowList bridge: deepUnwrap on a raw CFArrayRef used to yield a
+  //     function, not an array — so screenshot's window list was always empty.
+  const t63 = await send("tools/call", { name: "run_osascript", arguments: {
+    language: "javascript",
+    script: `ObjC.import("CoreGraphics");
+      var wins = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, 0)));
+      JSON.stringify({ isArray: Array.isArray(wins), len: wins.length });`,
+  } });
+  let t63parsed = {};
+  try { t63parsed = JSON.parse(t63.result.content[0].text); } catch {}
+  assert("CGWindowList bridges to a real array", t63parsed.isArray === true && t63parsed.len > 0, t63.result.content[0].text);
+
+  // 64. screenshot window mode must reach the capture, not die in the lookup
+  //     (kCGWindowOwnerName is localized — matching is done on PID now).
+  const front = await send("tools/call", { name: "get_frontmost_app", arguments: {} });
+  const frontName = JSON.parse(front.result.content[0].text).name;
+  const t64 = await send("tools/call", { name: "screenshot", arguments: { mode: "window", app: frontName, path: "/tmp/mcp-test-window.png" } });
+  const t64text = t64.result.content[0].text;
+  const t64ok = !t64.result.isError || t64text.includes("No windows found");
+  assert("screenshot window mode resolves frontmost app", t64ok, t64text);
+
   // Summary
   console.log(`\n${"=".repeat(40)}`);
   console.log(`Results: ${passed} passed, ${failed} failed out of ${passed + failed} tests`);

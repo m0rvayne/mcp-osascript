@@ -2,9 +2,9 @@
   "manifest_version": "0.3",
   "name": "mcp-osascript",
   "display_name": "macOS Automation for Claude",
-  "version": "1.0.0",
-  "description": "Let Claude control your Mac — 12 typed tools for windows, menus, keyboard, clipboard, browser tabs, notifications.",
-  "long_description": "MCP server for macOS automation via AppleScript and JXA. 12 typed tools with input validation and security guardrails. Features self-correcting menu clicks (when Claude picks the wrong menu item, the server returns what's actually there so Claude retries correctly), URL scheme allowlist, environment isolation, and process group kill. 41 integration tests.",
+  "version": "1.1.2",
+  "description": "Let Claude control your Mac — 17 typed tools for windows, menus, keyboard, clipboard, browser tabs, screenshots, notifications.",
+  "long_description": "MCP server for macOS automation via AppleScript and JXA. 17 typed tools with input validation and security guardrails. Features self-correcting menu clicks (when Claude picks the wrong menu item, the server returns what's actually there so Claude retries correctly), multi-monitor awareness, screenshot capture, Apple Shortcuts integration, URL scheme allowlist, environment isolation, and process group kill. 64 integration tests.",
   "author": {
     "name": "m0rvayne",
     "url": "https://github.com/m0rvayne"
@@ -20,28 +20,98 @@
     "entry_point": "server/index.js",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/server/index.js"],
+      "args": [
+        "${__dirname}/server/index.js"
+      ],
       "env": {}
     }
   },
   "tools": [
-    { "name": "run_osascript", "description": "Execute AppleScript or JXA script" },
-    { "name": "get_clipboard", "description": "Read clipboard as text" },
-    { "name": "set_clipboard", "description": "Write text to clipboard" },
-    { "name": "send_notification", "description": "Show macOS notification" },
-    { "name": "open_url", "description": "Open URL in browser (http/https/mailto only)" },
-    { "name": "open_app", "description": "Launch or activate application" },
-    { "name": "get_frontmost_app", "description": "Get active app name and bundle ID" },
-    { "name": "get_browser_tabs", "description": "List tabs in Safari, Chrome, or Arc" },
-    { "name": "type_text", "description": "Type text into active app" },
-    { "name": "press_key", "description": "Press key with modifiers" },
-    { "name": "manage_windows", "description": "List/move/resize/minimize/fullscreen/close windows" },
-    { "name": "app_menu", "description": "List or click menu items in any app" }
+    {
+      "name": "run_osascript",
+      "description": "Execute AppleScript or JXA script"
+    },
+    {
+      "name": "get_clipboard",
+      "description": "Read clipboard as text"
+    },
+    {
+      "name": "set_clipboard",
+      "description": "Write text to clipboard"
+    },
+    {
+      "name": "send_notification",
+      "description": "Show macOS notification"
+    },
+    {
+      "name": "open_url",
+      "description": "Open URL in browser (http/https/mailto only)"
+    },
+    {
+      "name": "open_app",
+      "description": "Launch or activate application"
+    },
+    {
+      "name": "get_frontmost_app",
+      "description": "Get active app name and bundle ID"
+    },
+    {
+      "name": "get_browser_tabs",
+      "description": "List tabs in Safari, Chrome, or Arc"
+    },
+    {
+      "name": "type_text",
+      "description": "Type text into active app"
+    },
+    {
+      "name": "press_key",
+      "description": "Press key with modifiers"
+    },
+    {
+      "name": "manage_windows",
+      "description": "List/move/resize/minimize/fullscreen/close windows"
+    },
+    {
+      "name": "get_displays",
+      "description": "List connected displays with position and size"
+    },
+    {
+      "name": "app_menu",
+      "description": "List or click menu items in any app"
+    },
+    {
+      "name": "screenshot",
+      "description": "Capture full screen, region, or app window"
+    },
+    {
+      "name": "app_visibility",
+      "description": "Hide, unhide, or quit an application"
+    },
+    {
+      "name": "file_open",
+      "description": "Open a file or folder, optionally in a given app"
+    },
+    {
+      "name": "run_shortcut",
+      "description": "List or run Apple Shortcuts"
+    }
   ],
-  "keywords": ["mcp", "macos", "applescript", "osascript", "jxa", "automation", "claude"],
+  "keywords": [
+    "mcp",
+    "macos",
+    "applescript",
+    "osascript",
+    "jxa",
+    "automation",
+    "claude",
+    "screenshot",
+    "shortcuts"
+  ],
   "license": "MIT",
   "compatibility": {
-    "platforms": ["darwin"],
+    "platforms": [
+      "darwin"
+    ],
     "runtimes": {
       "node": ">=18.0.0"
     }

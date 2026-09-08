@@ -2,13 +2,13 @@
 
 <img src="assets/banner.png" alt="mcp-osascript" width="100%">
 
-**Let Claude control your Mac.** Move windows, click menus, type text, read clipboard, manage browser tabs — 12 typed tools with input validation and security guardrails.
+**Let Claude control your Mac.** Move windows, click menus, type text, read clipboard, manage browser tabs, take screenshots, run Shortcuts — 17 typed tools with input validation and security guardrails.
 
 [![npm version](https://img.shields.io/npm/v/mcp-osascript)](https://www.npmjs.com/package/mcp-osascript)
 [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue)](https://support.apple.com/macos)
 [![Node 18+](https://img.shields.io/badge/node-18%2B-green)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
-[![Tests: 41 passed](https://img.shields.io/badge/tests-41%20passed-brightgreen)](#testing)
+[![Tests: 64 passed](https://img.shields.io/badge/tests-64%20passed-brightgreen)](#testing)
 
 </div>
 
@@ -75,10 +75,14 @@ Once installed, ask Claude:
 | *"Press Cmd+Shift+4"* | Triggers the screenshot shortcut |
 | *"List all items in the Edit menu of VS Code"* | Introspects the menu bar |
 | *"Close the second window of Terminal"* | Targets a specific window by index |
+| *"Screenshot the Safari window and save it to my Desktop"* | Captures just that window, not the whole screen |
+| *"Which monitor is my Slack window on?"* | Reads display geometry and window positions |
+| *"Hide everything except my editor"* | Hides apps without quitting them |
+| *"Run my 'Daily Standup' shortcut"* | Invokes an Apple Shortcut by name |
 
 ## Tools
 
-12 typed tools, each with input validation, error classification, and permission-aware error messages.
+17 typed tools, each with input validation, error classification, and permission-aware error messages.
 
 | Tool | What it does | Permission |
 |------|-------------|------------|
@@ -93,7 +97,12 @@ Once installed, ask Claude:
 | `type_text` | Type text into active app (max 500 chars) | Accessibility |
 | `press_key` | Press key with modifiers (cmd+c, return, f5) | Accessibility |
 | `manage_windows` | List / move / resize / minimize / fullscreen / close | Accessibility |
+| `get_displays` | List monitors — position, size, which is main | None |
 | `app_menu` | List or click menu items in any app | Accessibility |
+| `screenshot` | Capture full screen, a region, or an app window | Screen Recording |
+| `app_visibility` | Hide, unhide, or quit an application | Accessibility |
+| `file_open` | Open a file or folder, optionally in a given app | None |
+| `run_shortcut` | List or run Apple Shortcuts | None |
 
 ## Self-Correcting Menus
 
@@ -113,23 +122,24 @@ Server: "Clicked: File > Export as PDF..."
 
 | | mcp-osascript | steipete (824★) | peakmojo (463★) |
 |---|:---:|:---:|:---:|
-| Typed tools with validation | **12** | 2 (generic) | 1 (generic) |
+| Typed tools with validation | **17** | 2 (generic) | 1 (generic) |
 | URL scheme allowlist | **http/https/mailto** | No | No |
 | Env isolation (child process) | **PATH+HOME+LANG only** | Full process.env | Full process.env |
 | Process group kill (no orphans) | **SIGTERM→SIGKILL** | No | No |
 | Error sanitization (paths, tokens) | **Yes** | No | No |
 | Prototype pollution protection | **Object.create(null)** | No | No |
 | Self-correcting menu click | **Yes** | No | No |
-| Integration tests | **41** | 0 | 0 |
+| Integration tests | **64** | 0 | 0 |
 | Stdin piping (no temp files) | **Yes** | Temp files | Temp files |
 
 ## Permissions
 
 Tools work in three tiers:
 
-- **No permission needed** — clipboard, notifications, URLs, apps. Works immediately.
+- **No permission needed** — clipboard, notifications, URLs, apps, files, displays, Shortcuts. Works immediately.
 - **Automation** — browser tabs, frontmost app. macOS prompts once per browser.
-- **Accessibility** — keyboard, windows, menus. Grant once in **System Settings → Privacy & Security → Accessibility**.
+- **Accessibility** — keyboard, windows, menus, hide/unhide. Grant once in **System Settings → Privacy & Security → Accessibility**.
+- **Screen Recording** — screenshots only. Grant in **System Settings → Privacy & Security → Screen Recording**.
 
 When a permission is missing, the server tells you exactly what to do:
 
@@ -144,7 +154,7 @@ in System Settings > Privacy & Security > Accessibility."
 npm test
 ```
 
-41 integration tests covering all 12 tools — input validation, security boundaries (URL scheme blocking, prototype pollution, script size limits), timeout enforcement, and permission error handling.
+64 integration tests covering all 17 tools — input validation, security boundaries (URL scheme blocking, prototype pollution, script size limits), timeout enforcement, and permission error handling.
 
 <details>
 <summary>Security & Architecture</summary>
@@ -153,7 +163,7 @@ npm test
 
 - `run_osascript` executes arbitrary code — this is by design. The MCP client (Claude) is the trust boundary.
 - Scripts piped via stdin to `/usr/bin/osascript` — no temp files, no TOCTOU race conditions.
-- Script size: 50 KB max. Output: 50K chars max (truncated).
+- Script size: 50 KB max. Output: 50K chars max, truncated on a UTF-8 character boundary (no mojibake in non-Latin output).
 - Error messages sanitized — filesystem paths, tokens, and passwords are stripped.
 - Child processes get minimal env: `PATH`, `HOME`, `LANG` only — no API keys or secrets leak.
 - URL scheme allowlist — `file://`, `smb://`, `vnc://`, `javascript:` all blocked.

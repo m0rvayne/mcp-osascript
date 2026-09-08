@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import { StringDecoder } from "node:string_decoder";
 
 // Constants
 export const MAX_CONCURRENT = 5;
@@ -240,10 +241,18 @@ export async function executeScript(
         }, KILL_GRACE_MS);
       }, effectiveTimeout);
 
+      // Decoders hold incomplete multi-byte sequences between chunks, so a UTF-8
+      // character split across a chunk (or cut off by the output cap) is never
+      // turned into U+FFFD — the dangling bytes are simply dropped.
+      const outDecoder = new StringDecoder("utf8");
+      const errDecoder = new StringDecoder("utf8");
+
       child.stdout.on("data", (chunk) => {
         if (stdoutBytes < MAX_OUTPUT_BYTES) {
           const remaining = MAX_OUTPUT_BYTES - stdoutBytes;
-          stdout += chunk.slice(0, remaining).toString();
+          stdout += outDecoder.write(
+            chunk.length > remaining ? chunk.subarray(0, remaining) : chunk
+          );
         }
         stdoutBytes += chunk.length;
       });
@@ -251,7 +260,9 @@ export async function executeScript(
       child.stderr.on("data", (chunk) => {
         if (stderrBytes < MAX_OUTPUT_BYTES) {
           const remaining = MAX_OUTPUT_BYTES - stderrBytes;
-          stderr += chunk.slice(0, remaining).toString();
+          stderr += errDecoder.write(
+            chunk.length > remaining ? chunk.subarray(0, remaining) : chunk
+          );
         }
         stderrBytes += chunk.length;
       });

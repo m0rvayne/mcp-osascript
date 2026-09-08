@@ -195,7 +195,7 @@ const TOOLS = [
   },
   {
     name: "manage_windows",
-    description: "List, move, resize, minimize, fullscreen, or close application windows. Supports multi-monitor setups — use display parameter to target a specific monitor. Requires Accessibility permission for most actions.",
+    description: "List, move, resize, minimize, fullscreen, or close application windows. For multi-monitor setups call get_displays first, then pass absolute coordinates to 'move'. Requires Accessibility permission for most actions.",
     inputSchema: {
       type: "object",
       properties: {
@@ -204,7 +204,6 @@ const TOOLS = [
         window: { type: "number", default: 1, description: "Window index (1-based)." },
         position: { type: "object", properties: { x: { type: "number" }, y: { type: "number" } }, description: "For move." },
         size: { type: "object", properties: { width: { type: "number" }, height: { type: "number" } }, description: "For resize." },
-        display: { type: "number", default: 1, description: "Target display number (1=main, 2=secondary, etc.). For move." },
       },
       required: ["action"],
     },
@@ -532,11 +531,23 @@ HANDLERS["type_text"] = async (args) => {
     return errorResult(`Text too long (${args.text.length} chars). Maximum: 500.`);
   }
   // Use clipboard + Cmd+V instead of keystroke to avoid keyboard layout issues
-  // (keystroke sends key codes, not characters — Russian layout → garbled text)
-  const r = await runAS(`set the clipboard to "${escapeAS(args.text)}"
+  // (keystroke sends key codes, not characters — Russian layout → garbled text).
+  // The user's clipboard is saved and put back afterwards; the delay gives the
+  // target app time to actually process the paste before we overwrite it.
+  // Non-text clipboards (images, files) can't be restored — savedClip stays
+  // empty and we leave the typed text in place rather than wiping the board.
+  const r = await runAS(`set savedClip to ""
+set hadClip to false
+try
+  set savedClip to the clipboard as text
+  set hadClip to true
+end try
+set the clipboard to "${escapeAS(args.text)}"
 tell application "System Events"
   key code 9 using command down
-end tell`);
+end tell
+delay 0.3
+if hadClip then set the clipboard to savedClip`);
   if (!r.ok) {
     if (r.error.category === "permission_accessibility") return errorResult(ACCESSIBILITY_MSG);
     return errorResult(r.error.friendlyMessage);
@@ -667,8 +678,19 @@ return winList as text`);
   }
 
   if (action === "minimize") {
-    const r = await runAS(`tell application "${escApp}" to set miniaturized of window ${winIndex} to true`);
-    if (!r.ok) return errorResult(r.error.friendlyMessage);
+    // Prefer the app's own dictionary (works even when Accessibility is denied),
+    // fall back to the Accessibility API for apps with no AppleScript support
+    // (Electron and friends) — those are the ones move/resize already handle.
+    let r = await runAS(`tell application "${escApp}" to set miniaturized of window ${winIndex} to true`);
+    if (!r.ok) {
+      r = await runAS(`tell application "System Events" to tell process "${escApp}"
+  set value of attribute "AXMinimized" of window ${winIndex} to true
+end tell`);
+    }
+    if (!r.ok) {
+      if (r.error.category === "permission_accessibility") return errorResult(ACCESSIBILITY_MSG);
+      return errorResult(r.error.friendlyMessage);
+    }
     return textResult("Minimized window");
   }
 
@@ -687,8 +709,18 @@ end tell`);
   }
 
   if (action === "close") {
-    const r = await runAS(`tell application "${escApp}" to close window ${winIndex}`);
-    if (!r.ok) return errorResult(r.error.friendlyMessage);
+    // Same two-step as minimize: app dictionary first, then the window's
+    // Accessibility close button.
+    let r = await runAS(`tell application "${escApp}" to close window ${winIndex}`);
+    if (!r.ok) {
+      r = await runAS(`tell application "System Events" to tell process "${escApp}"
+  click (first button of window ${winIndex} whose subrole is "AXCloseButton")
+end tell`);
+    }
+    if (!r.ok) {
+      if (r.error.category === "permission_accessibility") return errorResult(ACCESSIBILITY_MSG);
+      return errorResult(r.error.friendlyMessage);
+    }
     return textResult("Closed window");
   }
 };
@@ -823,30 +855,22 @@ end tell`);
 // ── 15. screenshot ──────────────────────────────────────────────────────────
 
 HANDLERS["screenshot"] = async (args) => {
+  const VALID_MODES = ["fullscreen", "region", "window"];
+  const VALID_FORMATS = ["png", "jpg"];
   const mode = args.mode || "fullscreen";
   const format = args.format || "png";
   const toClipboard = args.clipboard || false;
 
-  const shellArgs = ["-x"]; // -x = no sound
-
-  if (toClipboard) {
-    shellArgs.push("-c");
-    if (mode === "region" && args.region) {
-      const { x, y, width, height } = args.region;
-      if ([x, y, width, height].some((v) => typeof v !== "number")) {
-        return errorResult("Region requires numeric x, y, width, height.");
-      }
-      shellArgs.push("-R", `${x},${y},${width},${height}`);
-    }
-    const r = await runShell("screencapture", shellArgs);
-    if (!r.ok) return errorResult(`Screenshot failed: ${r.error}`);
-    return textResult("Screenshot saved to clipboard.");
+  if (!VALID_MODES.includes(mode)) {
+    return errorResult(`Parameter 'mode' must be one of: ${VALID_MODES.join(", ")}.`);
+  }
+  if (!VALID_FORMATS.includes(format)) {
+    return errorResult(`Parameter 'format' must be one of: ${VALID_FORMATS.join(", ")}.`);
   }
 
-  const filePath = args.path || `/tmp/screenshot-${Date.now()}.${format}`;
-  if (filePath.includes("\0")) return errorResult("Invalid path.");
-  shellArgs.push("-t", format);
+  const shellArgs = ["-x"]; // -x = no sound
 
+  // ── Target selection — the same regardless of where the shot ends up ────────
   if (mode === "region") {
     if (!args.region || [args.region.x, args.region.y, args.region.width, args.region.height].some((v) => typeof v !== "number")) {
       return errorResult("Region mode requires region with numeric x, y, width, height.");
@@ -860,17 +884,30 @@ HANDLERS["screenshot"] = async (args) => {
       appName = front.stdout;
     }
     const winIdx = args.window || 1;
-    const safeAppName = JSON.stringify(appName);
+
+    // Match on PID, not name: kCGWindowOwnerName is LOCALIZED ("Терминал",
+    // "Почта") while System Events reports the English name, so name matching
+    // silently found nothing on a non-English system. Fall back to the name
+    // only if the PID lookup itself fails.
+    const pidR = await runAS(`tell application "System Events" to return unix id of first application process whose name is "${escapeAS(appName)}"`);
+    const ownerPid = pidR.ok ? Number(pidR.stdout.trim()) : NaN;
+
     const r = await executeScript(`
       ObjC.import("CoreGraphics");
+      // CGWindowListCopyWindowInfo returns a CFArrayRef. Handing that straight to
+      // deepUnwrap yields a function, not an array — the list always came back
+      // empty. castRefToObject bridges the ref into a real NSArray first.
       var info = $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, 0);
-      var wins = ObjC.deepUnwrap(info);
-      var target = ${safeAppName};
+      var wins = ObjC.deepUnwrap(ObjC.castRefToObject(info));
+      var targetPid = ${Number.isFinite(ownerPid) ? ownerPid : "null"};
+      var targetName = ${JSON.stringify(appName)};
       var matches = [];
       for (var i = 0; i < wins.length; i++) {
-        if (wins[i].kCGWindowOwnerName === target && wins[i].kCGWindowLayer === 0) {
-          matches.push(wins[i].kCGWindowNumber);
-        }
+        if (wins[i].kCGWindowLayer !== 0) continue;
+        var hit = targetPid !== null
+          ? wins[i].kCGWindowOwnerPID === targetPid
+          : wins[i].kCGWindowOwnerName === targetName;
+        if (hit) matches.push(wins[i].kCGWindowNumber);
       }
       JSON.stringify(matches);
     `, "javascript");
@@ -880,11 +917,22 @@ HANDLERS["screenshot"] = async (args) => {
     if (windowIds.length === 0) return errorResult(`No windows found for '${appName}'.`);
     if (winIdx > windowIds.length) return errorResult(`Window ${winIdx} not found. ${appName} has ${windowIds.length} window(s).`);
     shellArgs.push("-l", String(windowIds[winIdx - 1]));
-  } else if (mode === "fullscreen" && args.display) {
+  } else if (args.display) {
     shellArgs.push("-D", String(Math.max(1, Math.floor(args.display))));
   }
 
-  shellArgs.push(filePath);
+  // ── Destination ────────────────────────────────────────────────────────────
+  if (toClipboard) {
+    shellArgs.push("-c");
+    const r = await runShell("screencapture", shellArgs);
+    if (!r.ok) return errorResult(`Screenshot failed: ${r.error}`);
+    return textResult(`Screenshot saved to clipboard (${mode}).`);
+  }
+
+  const filePath = args.path || `/tmp/screenshot-${Date.now()}.${format}`;
+  if (filePath.includes("\0")) return errorResult("Invalid path.");
+  // "--" so a path beginning with "-" is treated as a filename, not a flag
+  shellArgs.push("-t", format, "--", filePath);
   const r = await runShell("screencapture", shellArgs);
   if (!r.ok) return errorResult(`Screenshot failed: ${r.error}`);
   return textResult(`Screenshot saved: ${filePath}`);
@@ -937,7 +985,8 @@ HANDLERS["file_open"] = async (args) => {
   const filePath = args.path.trim();
   if (filePath.includes("\0")) return errorResult("Invalid path.");
 
-  const shellArgs = [filePath];
+  // "--" so a path beginning with "-" is treated as a filename, not a flag
+  const shellArgs = ["--", filePath];
   if (args.app && typeof args.app === "string" && args.app.trim()) {
     const appName = args.app.trim();
     if (/[/\\]/.test(appName)) return errorResult("Invalid app name.");
@@ -982,7 +1031,7 @@ HANDLERS["run_shortcut"] = async (args) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "mcp-osascript", version: "1.1.1" },
+  { name: "mcp-osascript", version: "1.1.2" },
   { capabilities: { tools: {} } },
 );
 
