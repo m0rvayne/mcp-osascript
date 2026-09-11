@@ -335,6 +335,15 @@ const TOOLS = [
     },
   },
   {
+    name: "check_permissions",
+    description:
+      "Report which macOS permissions this server currently has, which tools each one unlocks, " +
+      "and where to grant the missing ones. Check this BEFORE telling the user an automation is " +
+      "impossible, and when a tool fails with a permission error — it distinguishes 'not granted " +
+      "yet' from 'genuinely broken'. Probes are read-only and never raise a permission prompt.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
     name: "run_shortcut",
     description: "List the user's Apple Shortcuts, or run one by name. Optional text input is written to a temporary file and passed to the shortcut as its input. A shortcut that waits for user interaction will block until it times out (30s).",
     inputSchema: {
@@ -1244,12 +1253,82 @@ HANDLERS["run_shortcut"] = async (args) => {
   }
 };
 
+// ── 19. check_permissions ───────────────────────────────────────────────────
+
+const ALWAYS_AVAILABLE = [
+  "run_osascript", "get_clipboard", "set_clipboard", "send_notification",
+  "open_url", "open_app", "file_open", "run_shortcut", "get_displays",
+];
+const NEEDS_ACCESSIBILITY = ["type_text", "press_key", "manage_windows", "app_menu", "app_visibility"];
+const NEEDS_AUTOMATION = ["get_frontmost_app", "get_browser_tabs"];
+const NEEDS_SCREEN_RECORDING = ["screenshot"];
+
+HANDLERS["check_permissions"] = async () => {
+  // Talking to System Events at all requires Automation for it; the reply also
+  // carries the Accessibility state, so one probe answers both. Neither raises
+  // a prompt when already decided.
+  const ax = await runAS(`tell application "System Events" to return (UI elements enabled) as text`);
+
+  let automation, accessibility;
+  if (ax.ok) {
+    automation = true;
+    accessibility = ax.stdout.trim().toLowerCase() === "true";
+  } else if (ax.error.category === "permission_automation") {
+    automation = false;
+    accessibility = null; // cannot be determined without talking to System Events
+  } else {
+    automation = null;
+    accessibility = null;
+  }
+
+  // CGPreflightScreenCaptureAccess reports the current state without prompting.
+  // It is a plain C function, so the JXA bridge needs it bound explicitly —
+  // $.CGPreflightScreenCaptureAccess is undefined without this.
+  let screenRecording = null;
+  const sr = await executeScript(`
+    ObjC.import("CoreGraphics");
+    var ok = null;
+    try {
+      ObjC.bindFunction("CGPreflightScreenCaptureAccess", ["bool", []]);
+      ok = $.CGPreflightScreenCaptureAccess();
+    } catch (e) { ok = null; }
+    JSON.stringify({ ok: ok });
+  `, "javascript", 10000);
+  if (sr.exitCode === 0) {
+    try { screenRecording = JSON.parse(sr.stdout.trim()).ok; } catch { /* leave null */ }
+  }
+
+  const describe = (granted, tools, where) => ({
+    granted,
+    ...(granted === null ? { status: "could not be determined" } : {}),
+    unlocks: tools,
+    ...(granted === true ? {} : { grantAt: where }),
+  });
+
+  return textResult(JSON.stringify({
+    accessibility: describe(
+      accessibility, NEEDS_ACCESSIBILITY,
+      "System Settings > Privacy & Security > Accessibility — enable the app that runs this server (Claude, Terminal, …)",
+    ),
+    automation: describe(
+      automation, NEEDS_AUTOMATION,
+      "System Settings > Privacy & Security > Automation — allow control of System Events, and of each browser you want to read tabs from",
+    ),
+    screenRecording: describe(
+      screenRecording, NEEDS_SCREEN_RECORDING,
+      "System Settings > Privacy & Security > Screen Recording",
+    ),
+    noPermissionNeeded: ALWAYS_AVAILABLE,
+    note: "Automation is granted per target application. System Events covers windows, menus and keyboard; reading browser tabs prompts once per browser on first use.",
+  }, null, 2));
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Server setup
 // ─────────────────────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "mcp-osascript", version: "1.1.3" },
+  { name: "mcp-osascript", version: "1.2.0" },
   { capabilities: { tools: {} } },
 );
 

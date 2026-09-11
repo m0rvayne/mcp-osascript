@@ -2,13 +2,13 @@
 
 <img src="assets/banner.png" alt="mcp-osascript" width="100%">
 
-**Let Claude control your Mac.** Move windows, click menus, type text, read clipboard, manage browser tabs, take screenshots, run Shortcuts — 17 typed tools with input validation and security guardrails.
+**Let Claude control your Mac.** Move windows, click menus, type text, read clipboard, manage browser tabs, take screenshots, run Shortcuts — 18 typed tools with input validation and security guardrails.
 
 [![npm version](https://img.shields.io/npm/v/mcp-osascript)](https://www.npmjs.com/package/mcp-osascript)
 [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue)](https://support.apple.com/macos)
 [![Node 18+](https://img.shields.io/badge/node-18%2B-green)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
-[![Tests: 80 passed](https://img.shields.io/badge/tests-80%20passed-brightgreen)](#testing)
+[![Tests: 84 passed](https://img.shields.io/badge/tests-84%20passed-brightgreen)](#testing)
 [![Tests](https://github.com/m0rvayne/mcp-osascript/actions/workflows/test.yml/badge.svg)](https://github.com/m0rvayne/mcp-osascript/actions/workflows/test.yml)
 [![m0rvayne/mcp-osascript MCP server](https://glama.ai/mcp/servers/m0rvayne/mcp-osascript/badges/score.svg)](https://glama.ai/mcp/servers/m0rvayne/mcp-osascript)
 
@@ -90,10 +90,11 @@ Once installed, ask Claude:
 
 ## Tools
 
-17 typed tools, each with input validation, error classification, and permission-aware error messages.
+18 typed tools, each with input validation, error classification, and permission-aware error messages.
 
 | Tool | What it does | Permission |
 |------|-------------|------------|
+| `check_permissions` | Report which permissions are granted and what each unlocks | None |
 | `run_osascript` | Execute any AppleScript or JXA script | None |
 | `get_clipboard` | Read clipboard as text | None |
 | `set_clipboard` | Write text to clipboard | None |
@@ -130,14 +131,14 @@ Server: "Clicked: File > Export as PDF..."
 
 | | mcp-osascript | steipete (880★) | peakmojo (464★) |
 |---|:---:|:---:|:---:|
-| Typed tools with validation | **17** | 2 (generic) | 1 (generic) |
+| Typed tools with validation | **18** | 2 (generic) | 1 (generic) |
 | URL scheme allowlist | **http/https/mailto** | No | No |
 | Env isolation (child process) | **PATH+HOME+LANG only** | Full process.env | Full process.env |
 | Process group kill (no orphans) | **SIGTERM→SIGKILL** | No | No |
 | Error sanitization (paths, tokens) | **Yes** | No | No |
 | Prototype pollution protection | **Object.create(null)** | No | No |
 | Self-correcting menu click | **Yes** | No | No |
-| Integration tests | **80** | 0 | 0 |
+| Integration tests | **84** | 0 | 0 |
 | Runs tests in CI | **Yes** | No | No |
 | Red-team audit passes | **4** | 0 | 0 |
 | Untrusted-output fencing | **Yes** | No | No |
@@ -164,6 +165,10 @@ Tools work in three tiers:
 - **Accessibility** — keyboard, windows, menus, hide/unhide. Grant once in **System Settings → Privacy & Security → Accessibility**.
 - **Screen Recording** — screenshots only. Grant in **System Settings → Privacy & Security → Screen Recording**.
 
+Ask Claude to run `check_permissions` and it will tell you which of these are already
+granted, which tools each one unlocks, and exactly which settings pane to open for the
+rest. The probes are read-only and never trigger a permission prompt.
+
 When a permission is missing, the server tells you exactly what to do:
 
 ```
@@ -177,7 +182,7 @@ in System Settings > Privacy & Security > Accessibility."
 npm test
 ```
 
-80 integration tests covering all 17 tools — input validation, security boundaries (URL scheme blocking, prototype pollution, script size limits), timeout enforcement, permission error handling, and regressions for every finding of the security audit.
+84 integration tests covering all 18 tools — input validation, security boundaries (URL scheme blocking, prototype pollution, script size limits), timeout enforcement, permission error handling, and regressions for every finding of the security audit.
 
 <details>
 <summary>Security & Architecture</summary>

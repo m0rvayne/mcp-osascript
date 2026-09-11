@@ -110,10 +110,10 @@ async function runTests() {
   assert("initialize succeeds", init.result != null, init);
   await send("notifications/initialized", {});
 
-  // 2. List tools — should return 17 tools
+  // 2. List tools — should return 18 tools
   console.log("\n[tools/list]");
   const tools = await send("tools/list", {});
-  assert("tools/list returns 17 tools", tools.result.tools.length === 17, tools.result.tools.length);
+  assert("tools/list returns 18 tools", tools.result.tools.length === 18, tools.result.tools.length);
 
   // 3. run_osascript — simple math
   console.log("\n[run_osascript]");
@@ -552,6 +552,36 @@ async function runTests() {
   // 78. input must be text, not a caller-supplied path (that was a file-read primitive)
   const a78 = await send("tools/call", { name: "run_shortcut", arguments: { action: "run", name: "X", input: { a: 1 } } });
   assert("run_shortcut rejects non-string input", a78.result.isError === true && a78.result.content[0].text.includes("must be a string"), a78.result.content[0].text);
+
+  // ── check_permissions ─────────────────────────────────────────────────────
+
+  console.log("\n[check_permissions]");
+
+  // 79. Reports every permission class, and must never hang on a prompt.
+  const pStart = Date.now();
+  const p79 = await send("tools/call", { name: "check_permissions", arguments: {} });
+  const pElapsed = Date.now() - pStart;
+  let perms = null;
+  try { perms = JSON.parse(p79.result.content[0].text); } catch {}
+  const classes = ["accessibility", "automation", "screenRecording"];
+  const shaped = perms !== null
+    && classes.every((k) => perms[k] && (typeof perms[k].granted === "boolean" || perms[k].granted === null))
+    && classes.every((k) => Array.isArray(perms[k].unlocks) && perms[k].unlocks.length > 0);
+  assert("reports all three permission classes", shaped, p79.result.content[0].text.slice(0, 200));
+
+  // 80. Probes are read-only; a prompt would block for seconds.
+  assert("probes do not block on a prompt", pElapsed < 8000, `${pElapsed}ms`);
+
+  // 81. A denied class must say where to grant it; a granted one need not.
+  const grantPaths = classes.every((k) =>
+    perms[k].granted === true ? true : typeof perms[k].grantAt === "string" && perms[k].grantAt.includes("System Settings"));
+  assert("denied permissions say where to grant them", grantPaths, JSON.stringify(perms && classes.map((k) => [k, perms[k].granted, !!perms[k].grantAt])));
+
+  // 82. Every tool name it mentions must actually exist.
+  const listed = new Set(tools.result.tools.map((t) => t.name));
+  const mentioned = [...classes.flatMap((k) => perms[k].unlocks), ...(perms.noPermissionNeeded || [])];
+  const unknown = mentioned.filter((n) => !listed.has(n));
+  assert("only names tools that exist", unknown.length === 0, unknown);
 
   // Summary
   console.log(`\n${"=".repeat(40)}`);
