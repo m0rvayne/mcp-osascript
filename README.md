@@ -139,7 +139,7 @@ Server: "Clicked: File > Export as PDF..."
 | Self-correcting menu click | **Yes** | No | No |
 | Integration tests | **80** | 0 | 0 |
 | Runs tests in CI | **Yes** | No | No |
-| Independent security audits | **4** | 0 | 0 |
+| Red-team audit passes | **4** | 0 | 0 |
 | Untrusted-output fencing | **Yes** | No | No |
 | Stdin piping (no temp files) | **Yes** | Temp files | Temp files |
 
@@ -148,7 +148,7 @@ project by months. The rows above are the things that differ in practice.
 
 ### Security audits
 
-Four independent red-team audits, the most recent against v1.1.2 with three parallel agents
+Four red-team audit passes (adversarial agents run against the source, commissioned by the author — not a third-party certification), the most recent against v1.1.2 with three parallel agents
 covering the shell surface, AppleScript escaping, and information disclosure. It found six real
 defects, including a tool that silently annulled another tool's scheme allowlist and a
 concurrency slot that could leak until the server deadlocked. Every finding is fixed and carries
