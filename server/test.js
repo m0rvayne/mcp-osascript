@@ -6,8 +6,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 let msgId = 0;
 let passed = 0;
 let failed = 0;
+let skipped = 0;
 
-const TEST_TIMEOUT_MS = 10_000;
+const TEST_TIMEOUT_MS = 40_000; // must exceed the server's 30s script timeout
 
 // Launch server
 const server = spawn("node", [join(__dirname, "index.js")], {
@@ -77,6 +78,11 @@ function send(method, params) {
 /**
  * Assert a single test condition.
  */
+function skip(name, why) {
+  skipped++;
+  console.log(`  \u25CB ${name} — skipped (${why})`);
+}
+
 function assert(name, condition, actual) {
   if (condition) {
     passed++;
@@ -231,12 +237,21 @@ async function runTests() {
   const t25 = await send("tools/call", { name: "get_browser_tabs", arguments: { browser: "firefox" } });
   assert("invalid browser name rejected", t25.result.isError === true, t25.result);
 
-  // 26. browser="safari" (accept success, not-running, or automation error)
-  const t26 = await send("tools/call", { name: "get_browser_tabs", arguments: { browser: "safari" } });
-  const t26ok = !t26.result.isError
-    || t26.result.content[0].text.includes("not running")
-    || t26.result.content[0].text.includes("Automation");
-  assert("safari tabs (success, not-running, or automation error)", t26ok, t26.result);
+  // 26. browser="safari" — only if Safari is actually running. Querying a browser
+  //     that is not running makes macOS launch it and raise an Automation prompt
+  //     that nobody can answer on a CI runner, so the call would hang.
+  const safariUp = await send("tools/call", { name: "run_osascript", arguments: {
+    script: 'tell application "System Events" to return (exists process "Safari") as text',
+  } });
+  if (safariUp.result.content[0].text.trim() === "true") {
+    const t26 = await send("tools/call", { name: "get_browser_tabs", arguments: { browser: "safari" } });
+    const t26ok = !t26.result.isError
+      || t26.result.content[0].text.includes("not running")
+      || t26.result.content[0].text.includes("Automation");
+    assert("safari tabs (success, not-running, or automation error)", t26ok, t26.result);
+  } else {
+    skip("safari tabs", "Safari is not running");
+  }
 
   // ── manage_windows ─────────────────────────────────────────────────────────
 
@@ -509,10 +524,17 @@ async function runTests() {
   const a75 = await send("tools/call", { name: "set_clipboard", arguments: { content: "\\".repeat(30000) } });
   assert("set_clipboard limits the escaped length", a75.result.isError === true && !a75.result.content[0].text.includes("Internal error"), a75.result.content[0].text);
 
-  // 76. browser tabs are attacker-controlled and must be fenced
-  const a76 = await send("tools/call", { name: "get_browser_tabs", arguments: { browser: "safari" } });
-  const a76ok = a76.result.isError || a76.result.content[0].text.includes("<untrusted-data");
-  assert("browser tabs marked untrusted", a76ok, a76.result.content[0].text.slice(0, 120));
+  // 76. browser tabs are attacker-controlled and must be fenced (same guard as 26)
+  const safariUp2 = await send("tools/call", { name: "run_osascript", arguments: {
+    script: 'tell application "System Events" to return (exists process "Safari") as text',
+  } });
+  if (safariUp2.result.content[0].text.trim() === "true") {
+    const a76 = await send("tools/call", { name: "get_browser_tabs", arguments: { browser: "safari" } });
+    const a76ok = a76.result.isError || a76.result.content[0].text.includes("<untrusted-data");
+    assert("browser tabs marked untrusted", a76ok, a76.result.content[0].text.slice(0, 120));
+  } else {
+    skip("browser tabs marked untrusted", "Safari is not running");
+  }
 
   // 77. run_shortcut: -i is --input-path and must be staged as a file, with the
   //     options BEFORE "--" (otherwise swift-argument-parser rejects them as
@@ -527,7 +549,7 @@ async function runTests() {
 
   // Summary
   console.log(`\n${"=".repeat(40)}`);
-  console.log(`Results: ${passed} passed, ${failed} failed out of ${passed + failed} tests`);
+  console.log(`Results: ${passed} passed, ${failed} failed${skipped ? `, ${skipped} skipped` : ""} out of ${passed + failed + skipped} tests`);
   server.kill("SIGTERM");
   process.exit(failed > 0 ? 1 : 0);
 }
