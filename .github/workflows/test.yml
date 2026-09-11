@@ -1,0 +1,36 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # macOS only: the suite drives real windows, menus, the clipboard and
+    # screencapture. It is an integration suite, not unit tests.
+    runs-on: macos-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # 18 is the minimum declared in package.json engines; 22 is current.
+        node: [18, 22]
+
+    name: node ${{ matrix.node }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run integration tests
+        run: npm test
+        env:
+          LANG: en_US.UTF-8
