@@ -245,10 +245,15 @@ async function runTests() {
   } });
   if (safariUp.result.content[0].text.trim() === "true") {
     const t26 = await send("tools/call", { name: "get_browser_tabs", arguments: { browser: "safari" } });
+    // A machine with no Automation grant (any CI runner) cannot answer the TCC
+    // prompt, so the call runs into the server's own timeout. That is an
+    // environment outcome, not a defect — accept it alongside the others.
+    const t26text = t26.result.content[0].text;
     const t26ok = !t26.result.isError
-      || t26.result.content[0].text.includes("not running")
-      || t26.result.content[0].text.includes("Automation");
-    assert("safari tabs (success, not-running, or automation error)", t26ok, t26.result);
+      || t26text.includes("not running")
+      || t26text.includes("Automation")
+      || /timeout/i.test(t26text);
+    assert("safari tabs (success, not-running, automation error, or timeout)", t26ok, t26text);
   } else {
     skip("safari tabs", "Safari is not running");
   }
@@ -531,6 +536,7 @@ async function runTests() {
   if (safariUp2.result.content[0].text.trim() === "true") {
     const a76 = await send("tools/call", { name: "get_browser_tabs", arguments: { browser: "safari" } });
     const a76ok = a76.result.isError || a76.result.content[0].text.includes("<untrusted-data");
+    // (isError already covers the no-Automation timeout case)
     assert("browser tabs marked untrusted", a76ok, a76.result.content[0].text.slice(0, 120));
   } else {
     skip("browser tabs marked untrusted", "Safari is not running");
