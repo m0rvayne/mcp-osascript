@@ -9,6 +9,10 @@
 [![Node 18+](https://img.shields.io/badge/node-18%2B-green)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![Tests: 80 passed](https://img.shields.io/badge/tests-80%20passed-brightgreen)](#testing)
+[![Tests](https://github.com/m0rvayne/mcp-osascript/actions/workflows/test.yml/badge.svg)](https://github.com/m0rvayne/mcp-osascript/actions/workflows/test.yml)
+[![m0rvayne/mcp-osascript MCP server](https://glama.ai/mcp/servers/m0rvayne/mcp-osascript/badges/score.svg)](https://glama.ai/mcp/servers/m0rvayne/mcp-osascript)
+
+Listed in the [official MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.m0rvayne/mcp-osascript`
 
 </div>
 
@@ -17,6 +21,10 @@
 ![Demo](assets/demo.gif)
 
 ## Quick Start
+
+**Claude Desktop — one click.** Download [`mcp-osascript-1.1.3.mcpb`](https://github.com/m0rvayne/mcp-osascript/releases/latest) from the latest release and double-click it. Claude Desktop installs the extension itself.
+
+**Or add it to the config manually:**
 
 ```json
 {
@@ -120,7 +128,7 @@ Server: "Clicked: File > Export as PDF..."
 
 ## Why mcp-osascript?
 
-| | mcp-osascript | steipete (824★) | peakmojo (463★) |
+| | mcp-osascript | steipete (880★) | peakmojo (464★) |
 |---|:---:|:---:|:---:|
 | Typed tools with validation | **17** | 2 (generic) | 1 (generic) |
 | URL scheme allowlist | **http/https/mailto** | No | No |
@@ -130,7 +138,22 @@ Server: "Clicked: File > Export as PDF..."
 | Prototype pollution protection | **Object.create(null)** | No | No |
 | Self-correcting menu click | **Yes** | No | No |
 | Integration tests | **80** | 0 | 0 |
+| Runs tests in CI | **Yes** | No | No |
+| Independent security audits | **4** | 0 | 0 |
+| Untrusted-output fencing | **Yes** | No | No |
 | Stdin piping (no temp files) | **Yes** | Temp files | Temp files |
+
+Star counts are a popularity measure, not a quality one — both alternatives predate this
+project by months. The rows above are the things that differ in practice.
+
+### Security audits
+
+Four independent red-team audits, the most recent against v1.1.2 with three parallel agents
+covering the shell surface, AppleScript escaping, and information disclosure. It found six real
+defects, including a tool that silently annulled another tool's scheme allowlist and a
+concurrency slot that could leak until the server deadlocked. Every finding is fixed and carries
+a regression test. `escapeAS` was verified against 13 string-breakout candidates through real
+`osascript` — none escape.
 
 ## Permissions
 
